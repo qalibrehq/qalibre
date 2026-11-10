@@ -1,4 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { extname, join, normalize, sep } from 'node:path';
+import { ROOT } from './config.js';
 import { isAddress, isHex, type Address, type Hex } from 'viem';
 import { config } from './config.js';
 import type { Db } from './db.js';
@@ -52,10 +55,67 @@ function parseAmount(v: unknown): bigint {
   return BigInt(v);
 }
 
+const DIST = join(ROOT, 'miniapp', 'dist');
+const TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.json': 'application/json',
+};
+const SECURITY_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'strict-origin-when-cross-origin',
+  'permissions-policy': 'camera=(), microphone=(), geolocation=()',
+  // Only Telegram may frame the app (Telegram Web runs Mini Apps in an iframe).
+  'content-security-policy': [
+    "default-src 'self'",
+    "script-src 'self' https://telegram.org",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src https://fonts.gstatic.com",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "frame-ancestors https://web.telegram.org https://*.telegram.org",
+  ].join('; '),
+};
+
+/** Serve the built Mini App (same origin as the API, so no CORS is needed). */
+async function serveStatic(pathname: string, res: ServerResponse) {
+  const rel = normalize(decodeURIComponent(pathname)).replace(/^([/\\])+/, '');
+  let file = join(DIST, rel);
+  if (!file.startsWith(DIST + sep) && file !== DIST) return false; // path traversal guard
+  let body: Buffer;
+  try {
+    body = await readFile(file);
+  } catch {
+    file = join(DIST, 'index.html'); // SPA fallback
+    try {
+      body = await readFile(file);
+    } catch {
+      return false;
+    }
+  }
+  const ext = extname(file);
+  res.writeHead(200, {
+    ...SECURITY_HEADERS,
+    'content-type': TYPES[ext] ?? 'application/octet-stream',
+    'cache-control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+  });
+  res.end(body);
+  return true;
+}
+
 export function startApi(db: Db, svc: Service) {
   const server = createServer(async (req, res) => {
     const origin = req.headers.origin;
     const url = new URL(req.url ?? '/', 'http://localhost');
+    if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
+      if (await serveStatic(url.pathname === '/' ? '/index.html' : url.pathname, res)) return;
+      res.writeHead(404);
+      return res.end();
+    }
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'access-control-allow-origin': origin && config.allowedOrigins.includes(origin) ? origin : '',
