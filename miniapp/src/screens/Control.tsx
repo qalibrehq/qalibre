@@ -144,8 +144,8 @@ export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: 
       <p className="muted" style={{ margin: '6px 0 0', fontSize: 14, lineHeight: 1.55 }}>Qalibre can only trade within these limits. It can never withdraw your money.</p>
       <div className="rows strong" style={{ marginTop: 14 }}>
         <div className="row"><span>Trading permission</span><span style={{ color: me.session?.active ? 'var(--green)' : 'var(--danger)', fontWeight: 600 }}>{me.session?.active ? `On · ${days} days left` : 'Off'}</span></div>
-        <div className="row"><span>Per trade</span><span className="num" style={{ color: 'var(--ink)' }}>50 QMS or 100 USDC</span></div>
-        <div className="row"><span>Per day</span><span className="num" style={{ color: 'var(--ink)' }}>200 QMS or 400 USDC</span></div>
+        <div className="row"><span>Per trade</span><span className="num" style={{ color: 'var(--ink)' }}>10 QMS or 20 USDC</span></div>
+        <div className="row"><span>Per day</span><span className="num" style={{ color: 'var(--ink)' }}>50 QMS or 100 USDC</span></div>
         <div className="row"><span>Wallet owner</span><span className="mono" style={{ fontSize: 13, color: 'var(--ink)' }}>{short(me.owner)}</span></div>
       </div>
       <p className="muted" style={{ margin: '14px 0 0', fontSize: 12, lineHeight: 1.55 }}>

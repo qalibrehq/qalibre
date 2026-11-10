@@ -29,6 +29,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export interface Me {
   registered: boolean;
+  upgraded?: boolean;
   account?: string;
   owner?: string;
   firstName?: string;
@@ -43,7 +44,7 @@ export interface Me {
 }
 
 export interface BatchStatus { nextBatchInMs: number; waiting: number; batch: number; intervalMs: number; lastRunAt: number }
-export interface Quote { direct: string; minOut: string; likely: string; waiting: number }
+export interface Quote { direct: string; minOut: string; likely: string; waiting: number; maxNetworkFee: string }
 export interface OrderRow {
   id: string;
   account: string;
@@ -51,6 +52,8 @@ export interface OrderRow {
   buy_token: string;
   sell_amount: string;
   min_buy_amount: string;
+  max_network_fee: string;
+  network_fee: string | null;
   status: 'pending' | 'filled' | 'expired' | 'failed';
   reason: string | null;
   tx_hash: string | null;

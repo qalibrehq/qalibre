@@ -37,6 +37,10 @@ export function loadDeployment(): Deployment {
 }
 
 export const RPC_URL = process.env.QMS_RPC_URL ?? 'https://rpc.testnet.qms.finance';
+/** Wrapped native QMS on QMS testnet (the token the QWAP pools use). */
+export const WQMS: Address = '0x9AA510295aC664A3d5A3182a3eFe959DE2B12c34';
+/** Measured gas for one trade inside a batch (settle overhead amortised), used for up-front estimates. */
+export const GAS_PER_TRADE = 260_000n;
 export const EXPLORER = 'https://testnet.qmsscan.io';
 
 export const qmsTestnet = defineChain({
@@ -84,6 +88,7 @@ export interface Order {
   buyToken: Address;
   sellAmount: bigint;
   minBuyAmount: bigint;
+  maxNetworkFee: bigint;
   validTo: bigint;
   nonce: bigint;
 }
@@ -95,6 +100,7 @@ export const orderTypes = {
     { name: 'buyToken', type: 'address' },
     { name: 'sellAmount', type: 'uint256' },
     { name: 'minBuyAmount', type: 'uint256' },
+    { name: 'maxNetworkFee', type: 'uint256' },
     { name: 'validTo', type: 'uint64' },
     { name: 'nonce', type: 'uint256' },
   ],
@@ -104,7 +110,7 @@ export const SIG_KIND_OWNER = '0x00' as const;
 export const SIG_KIND_SESSION = '0x01' as const;
 
 export function orderDomain(settlement: Address) {
-  return { name: 'Qalibre Settlement', version: '1', chainId: qmsTestnet.id, verifyingContract: settlement } as const;
+  return { name: 'Qalibre Settlement', version: '2', chainId: qmsTestnet.id, verifyingContract: settlement } as const;
 }
 
 /** Sign an order with a session key. The account checks the key's limits on-chain. */

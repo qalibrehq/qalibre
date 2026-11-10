@@ -88,7 +88,7 @@ export function App() {
   }
 
   if (!me.registered) {
-    return <Onboarding resume={vault} onDone={() => { setVault(true); void refresh(); setRoute({ name: 'home' }); }} />;
+    return <Onboarding resume={vault} upgraded={Boolean(me.upgraded)} onDone={() => { setVault(true); void refresh(); setRoute({ name: 'home' }); }} />;
   }
 
   return (

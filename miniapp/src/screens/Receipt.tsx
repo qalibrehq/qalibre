@@ -17,8 +17,9 @@ export function Receipt({ orderId, nav }: { orderId: string; nav: Nav }) {
   const got = BigInt(o.buy_amount ?? '0');
   const direct = BigInt(o.direct_quote ?? '0');
   const fee = BigInt(o.fee ?? '0');
-  const better = got > direct ? got - direct : 0n;
-  const width = direct > 0n && got > 0n ? Math.max(60, Math.min(100, Number((direct * 1000n) / got) / 10)) : 100;
+  const priced = got + BigInt(o.network_fee ?? '0'); // trade price, before the at-cost network fee
+  const better = priced > direct ? priced - direct : 0n;
+  const width = direct > 0n && priced > 0n ? Math.max(60, Math.min(100, Number((direct * 1000n) / priced) / 10)) : 100;
   const when = new Date(o.updated_at * 1000).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   return (
@@ -54,7 +55,7 @@ export function Receipt({ orderId, nav }: { orderId: string; nav: Nav }) {
             <div style={{ marginTop: 6, height: 4, background: 'var(--paper-2)' }}><div style={{ width: `${width}%`, height: 4, background: 'var(--muted)' }} /></div>
           </div>
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>With Qalibre</span><span className="num">{fromUnits(got, buy.decimals, 6)}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>With Qalibre, before network fee</span><span className="num">{fromUnits(priced, buy.decimals, 6)}</span></div>
             <div style={{ marginTop: 6, height: 4, background: 'var(--paper-2)' }}><div style={{ width: '100%', height: 4, background: 'var(--green)' }} /></div>
           </div>
         </div>
@@ -62,7 +63,7 @@ export function Receipt({ orderId, nav }: { orderId: string; nav: Nav }) {
 
       <div className="rows" style={{ borderTop: 0 }}>
         <div className="row"><span>Qalibre fee</span><span className="num">{fee > 0n ? `${fromUnits(fee, buy.decimals, 6)} ${buy.symbol}, 20% of savings` : 'None'}</span></div>
-        <div className="row"><span>Network fee</span><span>Paid by Qalibre</span></div>
+        <div className="row"><span>Network fee, at cost</span><span className="num">{o.network_fee && BigInt(o.network_fee) > 0n ? `${fromUnits(o.network_fee, buy.decimals, buy.decimals === 6 ? 6 : 8)} ${buy.symbol}` : 'Under 0.000001'}</span></div>
         <div className="row"><span>Settled</span><span>{when}</span></div>
       </div>
 

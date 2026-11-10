@@ -11,6 +11,7 @@ import {QalibreAccountFactory} from "../../src/QalibreAccountFactory.sol";
 import {QalibreSettlement} from "../../src/QalibreSettlement.sol";
 import {QwapV2Adapter, IQwapRouter} from "../../src/adapters/QwapV2Adapter.sol";
 import {OrderLib} from "../../src/libraries/OrderLib.sol";
+import {IVenueAdapter} from "../../src/interfaces/IVenueAdapter.sol";
 
 /// @notice Runs against a fork of the live QMS testnet and the real QWAP pools.
 ///         `QMS_RPC_URL=https://rpc.testnet.qms.finance forge test --match-path "test/fork/*"`
@@ -41,10 +42,13 @@ contract QwapForkTest is Test {
         enabled = true;
 
         settlement = new QalibreSettlement(address(this), feeRecipient, 20, 2_000); // launch settings
-        factory = new QalibreAccountFactory(IEntryPoint(ENTRY_POINT), address(settlement));
+        factory = new QalibreAccountFactory(IEntryPoint(ENTRY_POINT), address(settlement), WQMS);
         adapter = new QwapV2Adapter(IQwapRouter(QWAP_ROUTER), address(settlement));
-        settlement.setSolver(solver, true);
-        settlement.setAdapter(address(adapter), true);
+        address[] memory solvers = new address[](1);
+        solvers[0] = solver;
+        address[] memory adapters = new address[](1);
+        adapters[0] = address(adapter);
+        settlement.bootstrap(solvers, adapters, IVenueAdapter(address(adapter)));
 
         alice = _account(ALICE);
         bob = _account(BOB);
@@ -162,7 +166,7 @@ contract QwapForkTest is Test {
         view
         returns (OrderLib.Order memory)
     {
-        return OrderLib.Order(address(a), sell, buy, amount, minBuy, uint64(block.timestamp + 1 hours), amount);
+        return OrderLib.Order(address(a), sell, buy, amount, minBuy, 0, uint64(block.timestamp + 1 hours), amount);
     }
 
     function _trade(OrderLib.Order memory o, uint256 sellIdx, uint256 buyIdx)
@@ -171,7 +175,7 @@ contract QwapForkTest is Test {
         returns (QalibreSettlement.Trade memory t)
     {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(SESSION_PK, settlement.orderDigest(o));
-        t = QalibreSettlement.Trade(sellIdx, buyIdx, o, abi.encodePacked(uint8(1), r, s, v), address(adapter));
+        t = QalibreSettlement.Trade(sellIdx, buyIdx, o, abi.encodePacked(uint8(1), r, s, v), 0);
     }
 
     function _tokens() internal pure returns (address[] memory toks, uint256 iW, uint256 iU) {

@@ -10,8 +10,9 @@ import {QalibreAccount} from "../../src/QalibreAccount.sol";
 import {QalibreAccountFactory} from "../../src/QalibreAccountFactory.sol";
 import {QalibreSettlement} from "../../src/QalibreSettlement.sol";
 import {QwapV2Adapter, IQwapRouter} from "../../src/adapters/QwapV2Adapter.sol";
+import {IVenueAdapter} from "../../src/interfaces/IVenueAdapter.sol";
 import {OrderLib} from "../../src/libraries/OrderLib.sol";
-import {MockERC20, MockV2Router} from "./Mocks.sol";
+import {MockERC20, MockV2Router, MockWETH} from "./Mocks.sol";
 
 abstract contract BaseTest is Test {
     EntryPoint internal entryPoint;
@@ -19,9 +20,9 @@ abstract contract BaseTest is Test {
     QalibreAccountFactory internal factory;
     MockV2Router internal router;
     QwapV2Adapter internal adapter;
-    MockERC20 internal tokA;
+    MockWETH internal tokA; // plays wrapped QMS
     MockERC20 internal tokB;
-    MockERC20 internal tokC;
+    MockERC20 internal tokC; // has no pool
 
     address internal feeRecipient = makeAddr("feeRecipient");
     address internal solver = makeAddr("solver");
@@ -29,22 +30,27 @@ abstract contract BaseTest is Test {
     uint256 internal constant SESSION_PK = 0xBEEF; // the backend's session key
     address internal sessionKey;
 
-    uint256 internal constant FEE_BPS = 50; // 0.5% (the hard cap)
+    uint256 internal constant FEE_BPS = 50; // 0.5%, the hard cap
     uint256 internal constant SURPLUS_SHARE_BPS = 2_500; // 25% of savings
 
     function setUp() public virtual {
         sessionKey = vm.addr(SESSION_PK);
-        entryPoint = new EntryPoint();
-        settlement = new QalibreSettlement(address(this), feeRecipient, FEE_BPS, SURPLUS_SHARE_BPS);
-        factory = new QalibreAccountFactory(IEntryPoint(address(entryPoint)), address(settlement));
-        router = new MockV2Router();
-        adapter = new QwapV2Adapter(IQwapRouter(address(router)), address(settlement));
-        settlement.setSolver(solver, true);
-        settlement.setAdapter(address(adapter), true);
-
-        tokA = new MockERC20("Token A", "A", 18);
+        tokA = new MockWETH();
         tokB = new MockERC20("Token B", "B", 18);
         tokC = new MockERC20("Token C", "C", 18);
+
+        entryPoint = new EntryPoint();
+        settlement = new QalibreSettlement(address(this), feeRecipient, FEE_BPS, SURPLUS_SHARE_BPS);
+        factory = new QalibreAccountFactory(IEntryPoint(address(entryPoint)), address(settlement), address(tokA));
+        router = new MockV2Router();
+        adapter = new QwapV2Adapter(IQwapRouter(address(router)), address(settlement));
+
+        address[] memory solvers = new address[](1);
+        solvers[0] = solver;
+        address[] memory adapters = new address[](1);
+        adapters[0] = address(adapter);
+        settlement.bootstrap(solvers, adapters, IVenueAdapter(address(adapter)));
+
         // Pool price: 1 A = 2 B.
         router.addPool(address(tokA), address(tokB), 10_000 ether, 20_000 ether);
     }
@@ -97,6 +103,7 @@ abstract contract BaseTest is Test {
             buyToken: buy,
             sellAmount: sellAmount,
             minBuyAmount: minBuy,
+            maxNetworkFee: 0,
             validTo: uint64(block.timestamp + 1 hours),
             nonce: uint256(keccak256(abi.encode(acct, sell, sellAmount, minBuy, block.timestamp)))
         });
@@ -108,17 +115,12 @@ abstract contract BaseTest is Test {
         return abi.encodePacked(kind, r, s, v);
     }
 
-    function _trade(OrderLib.Order memory o, bytes memory sig, bool withRef)
-        internal
-        view
-        returns (QalibreSettlement.Trade memory t)
-    {
+    function _trade(OrderLib.Order memory o, bytes memory sig) internal view returns (QalibreSettlement.Trade memory t) {
         (address[] memory toks,) = _tokens();
         t.order = o;
         t.signature = sig;
         t.sellTokenIndex = _idx(toks, o.sellToken);
         t.buyTokenIndex = _idx(toks, o.buyToken);
-        t.refAdapter = withRef ? address(adapter) : address(0);
     }
 
     /// @dev Tokens A and B sorted ascending, as the settlement contract requires.
@@ -167,5 +169,9 @@ abstract contract BaseTest is Test {
 
     function _noInteractions() internal pure returns (QalibreSettlement.Interaction[] memory) {
         return new QalibreSettlement.Interaction[](0);
+    }
+
+    function _direct(address sell, address buy, uint256 amount) internal view returns (uint256) {
+        return adapter.quote(sell, buy, amount, "");
     }
 }

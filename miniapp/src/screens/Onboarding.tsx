@@ -7,7 +7,7 @@ import { Keypad } from '../ui/Keypad';
 
 type Step = 'welcome' | 'pin' | 'confirm' | 'unlock' | 'creating';
 
-export function Onboarding({ onDone, resume }: { onDone: () => void; resume: boolean }) {
+export function Onboarding({ onDone, resume, upgraded = false }: { onDone: () => void; resume: boolean; upgraded?: boolean }) {
   const [step, setStep] = useState<Step>(resume ? 'unlock' : 'welcome');
   const [pin, setPin] = useState('');
   const [first, setFirst] = useState('');
@@ -120,7 +120,7 @@ export function Onboarding({ onDone, resume }: { onDone: () => void; resume: boo
           ))}
         </div>
         <p className="muted" style={{ margin: '18px 0 0', fontSize: 13, lineHeight: 1.5 }}>
-          Default limits: 50 QMS or 100 USDC per trade. Change them any time in Control.
+          Default limits: 10 QMS or 20 USDC per trade, 50 QMS or 100 USDC per day.
         </p>
         {error && (
           <div className="spacer">
@@ -132,10 +132,12 @@ export function Onboarding({ onDone, resume }: { onDone: () => void; resume: boo
     );
   }
 
-  const title = step === 'pin' ? 'Choose a PIN' : step === 'confirm' ? 'Enter it once more' : 'Enter your PIN';
+  const title = step === 'pin' ? 'Choose a PIN' : step === 'confirm' ? 'Enter it once more' : upgraded ? 'Qalibre has been upgraded' : 'Enter your PIN';
   const sub =
     step === 'unlock'
-      ? 'Unlock your wallet key to finish setting up.'
+      ? upgraded
+        ? 'Enter your PIN to open your wallet on the new, safer contracts. Your key stays the same, and test funds will be added again.'
+        : 'Unlock your wallet key to finish setting up.'
       : 'Six digits. It locks the wallet key that only lives on this device. Qalibre never sees it, and cannot reset it.';
   return (
     <div className="screen fade-in">

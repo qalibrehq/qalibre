@@ -27,8 +27,8 @@ contract QalibreAccountFactory {
 
     error BadOwnerSignature();
 
-    constructor(IEntryPoint entryPoint, address settlement_) {
-        accountImplementation = new QalibreAccount(entryPoint);
+    constructor(IEntryPoint entryPoint, address settlement_, address wrappedNative) {
+        accountImplementation = new QalibreAccount(entryPoint, wrappedNative);
         settlement = settlement_;
     }
 

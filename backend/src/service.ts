@@ -17,6 +17,7 @@ import {
   signOrderAsSession,
   waitForConfirmations,
   walletClient,
+  GAS_PER_TRADE,
   type Order,
 } from '../../solver/src/chain.js';
 import { executeBatch, planBatch, type SignedOrder } from '../../solver/src/solver.js';
@@ -41,8 +42,9 @@ function defaultSession(sessionKey: Address) {
     validUntil: now + 30 * 86400,
     anyBuyToken: false,
     limits: [
-      { token: TOKENS.WQMS, perTrade: 50n * 10n ** 18n, perDay: 200n * 10n ** 18n },
-      { token: TOKENS.USDC, perTrade: 100n * 10n ** 6n, perDay: 400n * 10n ** 6n },
+      // Conservative until the external audit (docs/AUDIT.md 1.1). Owners can raise them.
+      { token: TOKENS.WQMS, perTrade: 10n * 10n ** 18n, perDay: 50n * 10n ** 18n },
+      { token: TOKENS.USDC, perTrade: 20n * 10n ** 6n, perDay: 100n * 10n ** 6n },
     ],
     buyTokens: [TOKENS.WQMS, TOKENS.USDC],
   };
@@ -63,6 +65,11 @@ function reviveSetup(json: string) {
   };
 }
 
+/** A wallet is current when it was created for the deployed settlement contract (older versions need re-opening). */
+function isCurrent<T extends { account: string | null; settlement: string | null }>(u: T | undefined): u is T & { account: string } {
+  return Boolean(u?.account && u.settlement && u.settlement.toLowerCase() === dep.settlement.toLowerCase());
+}
+
 export function createService(db: Db, notify: (tgId: number, html: string) => Promise<void>) {
   // ---------------------------------------------------------------------------------------------
   // Registration: the owner key lives on the user's device; we only ever see its address and its
@@ -71,7 +78,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
   async function prepareRegistration(tgId: number, owner: string) {
     if (!isAddress(owner)) throw new UserError('Invalid wallet address.');
     const user = db.getUser(tgId);
-    if (user?.account) throw new UserError('You already have a Qalibre wallet.');
+    if (isCurrent(user)) throw new UserError('You already have a Qalibre wallet.');
     const sessionPk = generatePrivateKey();
     const session = privateKeyToAccount(sessionPk);
     const setup = { owner: getAddress(owner), salt: 0n, session: defaultSession(session.address) };
@@ -102,7 +109,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
       const hash = await walletClient(relayer).writeContract({ address: dep.accountFactory, abi: QalibreAccountFactoryAbi, functionName: 'createAccount', args: [setup, ownerSignature], account: relayer, chain: walletClient(relayer).chain });
       await waitForConfirmations(client, hash, 1n);
     }
-    db.setAccount(tgId, account);
+    db.setAccount(tgId, account, dep.settlement);
     void drip(tgId, account);
     return { account };
   }
@@ -140,7 +147,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
   const dripInFlight = new Set<number>();
   async function requestTestFunds(tgId: number) {
     const u = db.getUser(tgId);
-    if (!u?.account) throw new UserError('Create your wallet first.');
+    if (!isCurrent(u)) throw new UserError('Open your wallet first.');
     const wait = u.last_drip_at + 86_400 - Math.floor(Date.now() / 1000);
     if (wait > 0) {
       const h = Math.ceil(wait / 3600);
@@ -183,7 +190,23 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
       .map((o) => ({ id: o.id, sellsA: o.sell_token.toLowerCase() === a.toLowerCase(), sellAmount: BigInt(o.sell_amount), minBuyAmount: BigInt(o.min_buy_amount) }));
     const sim = clearPair([...pending, { id: 'quote', sellsA, sellAmount, minBuyAmount: minOut }], { a: res.a, b: res.b }, fees);
     const likely = sim?.fills.find((f) => f.id === 'quote')?.net ?? direct;
-    return { direct, minOut, likely: likely > direct ? likely : direct, waiting: pending.length };
+    const maxNetworkFee = await networkFeeCap(buyToken, res.a, res.b, a);
+    return { direct, minOut, likely: likely > direct ? likely : direct, waiting: pending.length, maxNetworkFee };
+  }
+
+  /**
+   * The most the user signs for network costs: 3x today's measured gas cost for one trade, converted into the
+   * token they receive. The solver charges actual cost, which is normally a fraction of this.
+   */
+  async function networkFeeCap(buyToken: Address, resA: bigint, resB: bigint, tokenA: Address): Promise<bigint> {
+    const gasPrice = await client.getGasPrice();
+    const wei = GAS_PER_TRADE * gasPrice * 3n;
+    if (buyToken.toLowerCase() === TOKENS.WQMS.toLowerCase()) return wei > 0n ? wei : 1n;
+    // Convert QMS -> buy token at the pool price.
+    const buyIsA = buyToken.toLowerCase() === tokenA.toLowerCase();
+    const [qmsRes, buyRes] = buyIsA ? [resB, resA] : [resA, resB];
+    const v = (wei * buyRes) / qmsRes;
+    return v > 0n ? v : 1n;
   }
 
   let feeCache: { feeBps: bigint; surplusShareBps: bigint; at: number } | null = null;
@@ -199,7 +222,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
 
   async function placeOrder(tgId: number, sellToken: Address, buyToken: Address, sellAmount: bigint, mode: 'instant' | 'best' = 'best') {
     const user = db.getUser(tgId);
-    if (!user?.account || !user.session_key_enc) throw new UserError('Create your wallet first.');
+    if (!isCurrent(user) || !user?.session_key_enc) throw new UserError('Open your wallet first.');
     checkPair(sellToken, buyToken);
     const account = user.account as Address;
     const [bal, limit, spent, active] = await Promise.all([
@@ -225,6 +248,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
       buyToken: getAddress(buyToken),
       sellAmount,
       minBuyAmount: q.minOut,
+      maxNetworkFee: q.maxNetworkFee,
       validTo: BigInt(now + config.orderTtlSec),
       nonce: BigInt('0x' + randomUUID().replace(/-/g, '')),
     };
@@ -239,13 +263,14 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
       buy_token: order.buyToken,
       sell_amount: sellAmount.toString(),
       min_buy_amount: q.minOut.toString(),
+      max_network_fee: q.maxNetworkFee.toString(),
       valid_to: Number(order.validTo),
       nonce: order.nonce.toString(),
       signature,
       mode,
     });
     void runBatch();
-    return { id, minOut: q.minOut, likely: q.likely, direct: q.direct, nextBatchInMs: mode === 'instant' ? 0 : msToNextBatch() };
+    return { id, minOut: q.minOut, likely: q.likely, direct: q.direct, maxNetworkFee: q.maxNetworkFee, nextBatchInMs: mode === 'instant' ? 0 : msToNextBatch() };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -273,6 +298,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
         buyToken: o.buy_token as Address,
         sellAmount: BigInt(o.sell_amount),
         minBuyAmount: BigInt(o.min_buy_amount),
+        maxNetworkFee: BigInt(o.max_network_fee ?? '0'),
         validTo: BigInt(o.valid_to),
         nonce: BigInt(o.nonce),
       },
@@ -327,7 +353,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
               for (const rec of r.receipts) {
                 const q = byDigest.get(rec.orderDigest.toLowerCase());
                 if (!q) continue;
-                db.markFilled(q.id, { tx: r.hash, buy: rec.buyAmount.toString(), fee: rec.fee.toString(), direct: rec.directQuote.toString(), batchId });
+                db.markFilled(q.id, { tx: r.hash, buy: rec.buyAmount.toString(), fee: rec.fee.toString(), networkFee: rec.networkFee.toString(), direct: rec.directQuote.toString(), batchId });
                 const row = db.getOrder(q.id)!;
                 void notify(row.tg_id, fillMessage(row));
               }
@@ -354,16 +380,22 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
   function fillMessage(o: OrderRow): string {
     const buy = TOKEN_INFO[o.buy_token.toLowerCase()]!;
     const got = BigInt(o.buy_amount ?? '0');
+    const networkFee = BigInt(o.network_fee ?? '0');
     const direct = BigInt(o.direct_quote ?? '0');
-    const pct = direct > 0n ? Number(((got - direct) * 1_000_000n) / direct) / 10_000 : 0;
+    // Trade price vs a direct swap, before the at-cost network fee (a direct swap pays its own gas too).
+    const priced = got + networkFee;
+    const pct = direct > 0n ? Number(((priced - direct) * 1_000_000n) / direct) / 10_000 : 0;
     const fmt = (v: bigint) => trimUnits(v, buy.decimals);
     return [
       `<b>Filled. +${fmt(got)} ${buy.symbol}</b>`,
       pct > 0
-        ? `${pct.toFixed(2)}% more than a direct swap on QWAP, which would have paid ${fmt(direct)}.`
+        ? `A ${pct.toFixed(2)}% better price than a direct swap on QWAP, which would have paid ${fmt(direct)}.`
         : `The same as a direct swap on QWAP, with no Qalibre fee.`,
+      networkFee > 0n ? `Network fee at cost: ${trimUnits(networkFee, buy.decimals, 8)} ${buy.symbol}.` : '',
       `<a href="https://testnet.qmsscan.io/tx/${o.tx_hash}">View the settlement on QMS Explorer</a>`,
-    ].join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -371,7 +403,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
   // ---------------------------------------------------------------------------------------------
   async function portfolio(tgId: number) {
     const user = db.getUser(tgId);
-    if (!user?.account) return { registered: false as const };
+    if (!isCurrent(user)) return { registered: false as const, upgraded: Boolean(user?.account) };
     const account = user.account as Address;
     const res = await readReserves(client, dep.qwapRouter, TOKENS.WQMS, TOKENS.USDC);
     const wqmsIsA = TOKENS.WQMS.toLowerCase() < TOKENS.USDC.toLowerCase();

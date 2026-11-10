@@ -11,6 +11,11 @@ export const QalibreAccountFactoryAbi = [
         "name": "settlement_",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "wrappedNative",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"

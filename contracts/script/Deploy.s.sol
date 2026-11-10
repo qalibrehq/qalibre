@@ -8,6 +8,7 @@ import {QalibreSettlement} from "../src/QalibreSettlement.sol";
 import {QalibreAccountFactory} from "../src/QalibreAccountFactory.sol";
 import {QalibrePaymaster} from "../src/QalibrePaymaster.sol";
 import {QwapV2Adapter, IQwapRouter} from "../src/adapters/QwapV2Adapter.sol";
+import {IVenueAdapter} from "../src/interfaces/IVenueAdapter.sol";
 
 /// @notice One-command deploy of the whole Qalibre stack.
 ///
@@ -21,8 +22,9 @@ contract Deploy is Script {
     // QMS testnet (verified 2026-11-10 on testnet.qmsscan.io).
     address constant ENTRY_POINT_V07 = 0x0000000071727De22E5E9d8BAf0edAc6f37da032;
     address constant QWAP_ROUTER = 0x93AFF45f28e5DF1b55f5AEFEfB807De843b12619;
+    address constant WQMS = 0x9AA510295aC664A3d5A3182a3eFe959DE2B12c34;
 
-    bytes32 constant SALT = keccak256("qalibre.v1");
+    bytes32 constant SALT = keccak256("qalibre.v2");
 
     function run() external {
         uint256 deployerPk = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -43,12 +45,12 @@ contract Deploy is Script {
 
         // Owner is the deployer (constant), fee settings go through setters so they don't change addresses.
         QalibreSettlement settlement = QalibreSettlement(
-            _deploy(abi.encodePacked(type(QalibreSettlement).creationCode, abi.encode(deployer, deployer, 0, 0)))
+            _deploy(abi.encodePacked(type(QalibreSettlement).creationCode, abi.encode(deployer, feeRecipient, feeBps, surplusShareBps)))
         );
         QalibreAccountFactory factory = QalibreAccountFactory(
             _deploy(
                 abi.encodePacked(
-                    type(QalibreAccountFactory).creationCode, abi.encode(IEntryPoint(entryPoint), address(settlement))
+                    type(QalibreAccountFactory).creationCode, abi.encode(IEntryPoint(entryPoint), address(settlement), vm.envOr("WRAPPED_NATIVE", WQMS))
                 )
             )
         );
@@ -72,11 +74,15 @@ contract Deploy is Script {
         require(paymaster.owner() == deployer, "paymaster owner mismatch");
 
         // Configuration (idempotent).
-        if (settlement.feeRecipient() != feeRecipient) settlement.setFeeRecipient(feeRecipient);
-        if (settlement.feeBps() != feeBps) settlement.setFee(feeBps);
-        if (settlement.surplusShareBps() != surplusShareBps) settlement.setSurplusShare(surplusShareBps);
-        if (!settlement.isSolver(solver)) settlement.setSolver(solver, true);
-        if (!settlement.isAdapter(address(qwap))) settlement.setAdapter(address(qwap), true);
+        // One-time bootstrap: solver, QWAP adapter, and QWAP as the canonical reference venue.
+        // Every later addition goes through the contract's public 48-hour delay.
+        if (!settlement.bootstrapped()) {
+            address[] memory solvers = new address[](1);
+            solvers[0] = solver;
+            address[] memory adapters = new address[](1);
+            adapters[0] = address(qwap);
+            settlement.bootstrap(solvers, adapters, IVenueAdapter(address(qwap)));
+        }
         if (paymaster.getDeposit() < paymasterDeposit) {
             paymaster.deposit{value: paymasterDeposit - paymaster.getDeposit()}();
         }

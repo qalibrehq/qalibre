@@ -27,7 +27,7 @@ export const QalibreSettlementAbi = [
   },
   {
     "type": "function",
-    "name": "MAX_DUST_BPS",
+    "name": "ADMIN_DELAY",
     "inputs": [],
     "outputs": [
       {
@@ -41,6 +41,19 @@ export const QalibreSettlementAbi = [
   {
     "type": "function",
     "name": "MAX_FEE_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_NETWORK_FEE_BPS",
     "inputs": [],
     "outputs": [
       {
@@ -86,6 +99,42 @@ export const QalibreSettlementAbi = [
   },
   {
     "type": "function",
+    "name": "bootstrap",
+    "inputs": [
+      {
+        "name": "solvers",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "adapters",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "referenceVenue_",
+        "type": "address",
+        "internalType": "contract IVenueAdapter"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "bootstrapped",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "domainSeparator",
     "inputs": [],
     "outputs": [
@@ -96,6 +145,46 @@ export const QalibreSettlementAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "executeAdapter",
+    "inputs": [
+      {
+        "name": "adapter",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "executeFees",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "executeReferenceVenue",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "executeSolver",
+    "inputs": [
+      {
+        "name": "solver",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -215,6 +304,11 @@ export const QalibreSettlementAbi = [
             "internalType": "uint256"
           },
           {
+            "name": "maxNetworkFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
             "name": "validTo",
             "type": "uint64",
             "internalType": "uint64"
@@ -251,6 +345,51 @@ export const QalibreSettlementAbi = [
   },
   {
     "type": "function",
+    "name": "pendingAdapter",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pendingFeeBps",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pendingFeeEta",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "pendingOwner",
     "inputs": [],
     "outputs": [
@@ -264,24 +403,83 @@ export const QalibreSettlementAbi = [
   },
   {
     "type": "function",
-    "name": "renounceOwnership",
+    "name": "pendingReference",
     "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
-    "name": "setAdapter",
+    "name": "pendingReferenceEta",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pendingSolver",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pendingSurplusShareBps",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "referenceVenue",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IVenueAdapter"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "removeAdapter",
     "inputs": [
       {
         "name": "adapter",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "allowed",
-        "type": "bool",
-        "internalType": "bool"
       }
     ],
     "outputs": [],
@@ -289,12 +487,58 @@ export const QalibreSettlementAbi = [
   },
   {
     "type": "function",
-    "name": "setFee",
+    "name": "removeSolver",
     "inputs": [
       {
-        "name": "newFeeBps",
-        "type": "uint256",
-        "internalType": "uint256"
+        "name": "solver",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "renounceOwnership",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "scheduleAdapter",
+    "inputs": [
+      {
+        "name": "adapter",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "scheduleReferenceVenue",
+    "inputs": [
+      {
+        "name": "venue",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "scheduleSolver",
+    "inputs": [
+      {
+        "name": "solver",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -315,26 +559,13 @@ export const QalibreSettlementAbi = [
   },
   {
     "type": "function",
-    "name": "setSolver",
+    "name": "setFees",
     "inputs": [
       {
-        "name": "solver",
-        "type": "address",
-        "internalType": "address"
+        "name": "newFeeBps",
+        "type": "uint256",
+        "internalType": "uint256"
       },
-      {
-        "name": "allowed",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setSurplusShare",
-    "inputs": [
       {
         "name": "newShareBps",
         "type": "uint256",
@@ -404,6 +635,11 @@ export const QalibreSettlementAbi = [
                 "internalType": "uint256"
               },
               {
+                "name": "maxNetworkFee",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
                 "name": "validTo",
                 "type": "uint64",
                 "internalType": "uint64"
@@ -421,9 +657,9 @@ export const QalibreSettlementAbi = [
             "internalType": "bytes"
           },
           {
-            "name": "refAdapter",
-            "type": "address",
-            "internalType": "address"
+            "name": "networkFee",
+            "type": "uint256",
+            "internalType": "uint256"
           }
         ]
       },
@@ -552,6 +788,37 @@ export const QalibreSettlementAbi = [
   },
   {
     "type": "event",
+    "name": "ChangeScheduled",
+    "inputs": [
+      {
+        "name": "what",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "target",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "eta",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "DustSwept",
     "inputs": [
       {
@@ -577,19 +844,6 @@ export const QalibreSettlementAbi = [
   },
   {
     "type": "event",
-    "name": "FeeChanged",
-    "inputs": [
-      {
-        "name": "feeBps",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "FeeRecipientChanged",
     "inputs": [
       {
@@ -597,6 +851,25 @@ export const QalibreSettlementAbi = [
         "type": "address",
         "indexed": false,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "FeesSet",
+    "inputs": [
+      {
+        "name": "feeBps",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "surplusShareBps",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -684,6 +957,19 @@ export const QalibreSettlementAbi = [
   },
   {
     "type": "event",
+    "name": "ReferenceVenueSet",
+    "inputs": [
+      {
+        "name": "venue",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "SolverSet",
     "inputs": [
       {
@@ -703,10 +989,22 @@ export const QalibreSettlementAbi = [
   },
   {
     "type": "event",
-    "name": "SurplusShareChanged",
+    "name": "SurplusDistributed",
     "inputs": [
       {
-        "name": "surplusShareBps",
+        "name": "batchId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -767,6 +1065,12 @@ export const QalibreSettlementAbi = [
         "internalType": "uint256"
       },
       {
+        "name": "networkFee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
         "name": "directQuote",
         "type": "uint256",
         "indexed": false,
@@ -796,6 +1100,11 @@ export const QalibreSettlementAbi = [
         "internalType": "address"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "AlreadyBootstrapped",
+    "inputs": []
   },
   {
     "type": "error",
@@ -831,11 +1140,6 @@ export const QalibreSettlementAbi = [
         "name": "leftover",
         "type": "uint256",
         "internalType": "uint256"
-      },
-      {
-        "name": "allowed",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ]
   },
@@ -848,6 +1152,27 @@ export const QalibreSettlementAbi = [
     "type": "error",
     "name": "FeeTooHigh",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InsufficientProceeds",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "available",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "owed",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
   },
   {
     "type": "error",
@@ -898,6 +1223,28 @@ export const QalibreSettlementAbi = [
   },
   {
     "type": "error",
+    "name": "NetworkFeeTooHigh",
+    "inputs": [
+      {
+        "name": "orderDigest",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "NoReferencePrice",
+    "inputs": [
+      {
+        "name": "orderDigest",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "NotAdapter",
     "inputs": []
   },
@@ -924,7 +1271,23 @@ export const QalibreSettlementAbi = [
   },
   {
     "type": "error",
+    "name": "NotReady",
+    "inputs": [
+      {
+        "name": "eta",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "NotSolver",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NothingScheduled",
     "inputs": []
   },
   {

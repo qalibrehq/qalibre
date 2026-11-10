@@ -130,6 +130,7 @@ async function main() {
       buyToken: p.buy,
       sellAmount: p.amount,
       minBuyAmount: (d * 995n) / 1000n, // 0.5% slippage limit
+      maxNetworkFee: d / 1000n, // at most 0.1% for network costs; actual cost is far lower
       validTo: now + 900n,
       nonce: BigInt(Date.now()) * 10n + BigInt(people.indexOf(p)),
     };
@@ -145,7 +146,7 @@ async function main() {
   };
   const outDir = join(here, '..', 'out');
   mkdirSync(outDir, { recursive: true });
-  const results: Record<string, { got: bigint; fee: bigint; direct: bigint; batch: number; tx: Hex }> = {};
+  const results: Record<string, { got: bigint; fee: bigint; netFee: bigint; direct: bigint; batch: number; tx: Hex }> = {};
   let queue = [...pending];
   for (let round = 1; queue.length > 0 && round <= 4; round++) {
     // Re-plan from fresh pool reserves on every attempt: if the pool moves between simulation and
@@ -174,7 +175,7 @@ async function main() {
     console.log(`  settled in block ${r.block}, ${r.receipts.length} trades: ${EXPLORER}/tx/${r.hash}`);
     for (const rec of r.receipts) {
       const name = Object.entries(accounts).find(([, a]) => a.toLowerCase() === rec.account.toLowerCase())?.[0] ?? rec.account;
-      results[name] = { got: rec.buyAmount, fee: rec.fee, direct: rec.directQuote, batch: round, tx: r.hash };
+      results[name] = { got: rec.buyAmount, fee: rec.fee, netFee: rec.networkFee, direct: rec.directQuote, batch: round, tx: r.hash };
     }
     const done = new Set(filledIds);
     queue = queue.filter((o) => !done.has(o.id));
@@ -182,16 +183,17 @@ async function main() {
 
   // 5. Receipts: on-chain direct quote vs what each user actually received.
   console.log('\nResults (all numbers read from on-chain TradeSettled events):\n');
-  console.log('  user    receives   direct on QWAP   with Qalibre     difference   Qalibre fee');
+  console.log('  user    receives   direct on QWAP   with Qalibre     price vs direct   Qalibre fee   network fee (at cost)');
   for (const p of people) {
     const r = results[p.name];
     if (!r) {
       console.log(`  ${p.name.padEnd(7)} not filled`);
       continue;
     }
-    const diff = r.got - r.direct;
+    // Price comparison before the at-cost network fee (a direct QWAP swap pays its own gas too).
+    const diff = r.got + r.netFee - r.direct;
     const pct = r.direct > 0n ? Number((diff * 1_000_000n) / r.direct) / 10_000 : 0;
-    console.log(`  ${p.name.padEnd(7)} ${sym(p.buy).padEnd(9)}  ${fmt(r.direct, p.buy).padStart(14)}  ${fmt(r.got, p.buy).padStart(14)}  ${(pct >= 0 ? '+' : '') + pct.toFixed(3) + '%'}`.padEnd(80) + `${fmt(r.fee, p.buy)}`);
+    console.log(`  ${p.name.padEnd(7)} ${sym(p.buy).padEnd(9)}  ${fmt(r.direct, p.buy).padStart(14)}  ${fmt(r.got, p.buy).padStart(14)}  ${(pct >= 0 ? '+' : '') + pct.toFixed(3) + '%'}`.padEnd(84) + `${fmt(r.fee, p.buy).padEnd(14)}${fmt(r.netFee, p.buy)}`);
   }
   console.log('');
 }

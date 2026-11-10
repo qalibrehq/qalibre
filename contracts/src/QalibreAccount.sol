@@ -16,6 +16,10 @@ import {OrderLib} from "./libraries/OrderLib.sol";
 import {IQalibreAccount} from "./interfaces/IQalibreAccount.sol";
 import {ISignatureValidator} from "./interfaces/ISignatureValidator.sol";
 
+interface IWrappedNative {
+    function deposit() external payable;
+}
+
 /// @title QalibreAccount
 /// @notice A non-custodial ERC-4337 smart account owned by one user.
 ///
@@ -66,6 +70,10 @@ contract QalibreAccount is BaseAccount, IERC1271, IQalibreAccount, Initializable
     // ---------------------------------------------------------------------------------------------
 
     IEntryPoint private immutable _entryPoint;
+    /// @notice Wrapped native QMS. Native QMS (e.g. from the faucet) is wrapped automatically when an order needs it.
+    address public immutable wrappedNative;
+
+    bytes32 internal constant MESSAGE_TYPEHASH = keccak256("QalibreMessage(bytes32 hash)");
 
     /// @notice The user. Signs UserOperations (ECDSA) unless a custom validator is installed.
     address public owner;
@@ -122,8 +130,9 @@ contract QalibreAccount is BaseAccount, IERC1271, IQalibreAccount, Initializable
     // Setup
     // ---------------------------------------------------------------------------------------------
 
-    constructor(IEntryPoint anEntryPoint) {
+    constructor(IEntryPoint anEntryPoint, address wrappedNative_) {
         _entryPoint = anEntryPoint;
+        wrappedNative = wrappedNative_;
         _disableInitializers();
     }
 
@@ -167,8 +176,25 @@ contract QalibreAccount is BaseAccount, IERC1271, IQalibreAccount, Initializable
     }
 
     /// @notice ERC-1271. Only the owner's signature is accepted; session keys never are.
+    /// @dev The owner signs `replaySafeHash(hash)`, which binds the signature to this account and chain, so a
+    ///      signature for one account can never be replayed against another account with the same owner.
     function isValidSignature(bytes32 hash, bytes calldata signature) external view returns (bytes4) {
-        return _isValidOwnerSignature(hash, signature) ? IERC1271.isValidSignature.selector : bytes4(0xffffffff);
+        return _isValidOwnerSignature(replaySafeHash(hash), signature)
+            ? IERC1271.isValidSignature.selector
+            : bytes4(0xffffffff);
+    }
+
+    function replaySafeHash(bytes32 hash) public view returns (bytes32) {
+        bytes32 domain = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256("Qalibre Account"),
+                keccak256("1"),
+                block.chainid,
+                address(this)
+            )
+        );
+        return keccak256(abi.encodePacked("\x19\x01", domain, keccak256(abi.encode(MESSAGE_TYPEHASH, hash))));
     }
 
     function _isValidOwnerSignature(bytes32 hash, bytes calldata signature) internal view returns (bool) {
@@ -293,6 +319,14 @@ contract QalibreAccount is BaseAccount, IERC1271, IQalibreAccount, Initializable
             revert BadSignatureKind();
         }
 
+        // Native QMS counts as tradeable QMS: wrap only the shortfall, only for this order.
+        if (order.sellToken == wrappedNative && wrappedNative != address(0)) {
+            uint256 have = IERC20(wrappedNative).balanceOf(address(this));
+            if (have < order.sellAmount) {
+                uint256 need = order.sellAmount - have;
+                if (address(this).balance >= need) IWrappedNative(wrappedNative).deposit{value: need}();
+            }
+        }
         IERC20(order.sellToken).safeTransfer(msg.sender, order.sellAmount);
         emit OrderAuthorized(digest, kind, order.sellToken, order.sellAmount);
     }

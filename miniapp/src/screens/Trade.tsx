@@ -13,7 +13,7 @@ export function Trade({ me, nav, side: initialSide, toast, refresh }: { me: Me; 
   const sell = side === 'buy' ? TOKENS.USDC : TOKENS.QMS;
   const buy = side === 'buy' ? TOKENS.QMS : TOKENS.USDC;
   const [amount, setAmount] = useState('0');
-  const [quote, setQuote] = useState<{ minOut: string; likely: string; direct: string } | null>(null);
+  const [quote, setQuote] = useState<{ minOut: string; likely: string; direct: string; maxNetworkFee: string } | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -128,6 +128,7 @@ export function Trade({ me, nav, side: initialSide, toast, refresh }: { me: Me; 
       <div className="rows" style={{ marginTop: 20 }}>
         <div className="row"><span>You receive at least</span><span className="num" style={{ fontWeight: 600 }}>{quote ? `${fromUnits(quote.minOut, buy.decimals)} ${buy.symbol}` : '–'}</span></div>
         <div className="row"><span>Likely, when matched</span><span className="num green" style={{ fontWeight: 600 }}>{quote ? `${fromUnits(quote.likely, buy.decimals)} ${buy.symbol}` : '–'}</span></div>
+        <div className="row"><span>Network fee, at cost</span><span className="num" style={{ color: 'var(--ink)' }}>{quote ? `up to ${fromUnits(quote.maxNetworkFee, buy.decimals, buy.decimals === 6 ? 6 : 8)} ${buy.symbol}` : '–'}</span></div>
       </div>
       <p style={{ minHeight: 20, margin: '10px 0 0', fontSize: 13, color: 'var(--danger)' }}>{error ?? ''}</p>
       {phase === 'idle' && balance === 0 && <TestFundsButton variant="button" onDone={() => setTimeout(refresh, 1500)} toast={toast} />}
@@ -206,10 +207,11 @@ export function Trade({ me, nav, side: initialSide, toast, refresh }: { me: Me; 
   );
 }
 
+/** Trade price vs a direct swap, before the at-cost network fee (a direct swap pays its own gas too). */
 export function improvement(o: OrderRow): string {
-  const got = BigInt(o.buy_amount ?? '0');
+  const priced = BigInt(o.buy_amount ?? '0') + BigInt(o.network_fee ?? '0');
   const direct = BigInt(o.direct_quote ?? '0');
-  if (direct <= 0n || got <= direct) return 'The same as a direct swap, with no Qalibre fee';
-  const pct = Number(((got - direct) * 1_000_000n) / direct) / 10_000;
-  return `${pct < 0.01 ? '<0.01' : pct.toFixed(2)}% more than swapping directly`;
+  if (direct <= 0n || priced <= direct) return 'The same price as a direct swap, with no Qalibre fee';
+  const pct = Number(((priced - direct) * 1_000_000n) / direct) / 10_000;
+  return `${pct < 0.01 ? '<0.01' : pct.toFixed(2)}% better price than swapping directly`;
 }

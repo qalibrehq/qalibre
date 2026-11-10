@@ -6,6 +6,11 @@ export const QalibreAccountAbi = [
         "name": "anEntryPoint",
         "type": "address",
         "internalType": "contract IEntryPoint"
+      },
+      {
+        "name": "wrappedNative_",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -71,6 +76,11 @@ export const QalibreAccountAbi = [
           },
           {
             "name": "minBuyAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "maxNetworkFee",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -286,6 +296,25 @@ export const QalibreAccountAbi = [
         "name": "",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "replaySafeHash",
+    "inputs": [
+      {
+        "name": "hash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "stateMutability": "view"
@@ -722,6 +751,19 @@ export const QalibreAccountAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "wrappedNative",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "event",

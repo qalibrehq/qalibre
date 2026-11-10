@@ -114,3 +114,12 @@ contract MockValidator is ISignatureValidator {
         return signature.length == 32 && bytes32(signature) == keccak256(abi.encode(secret, hash));
     }
 }
+
+/// @dev Minimal WETH9-style wrapped native token.
+contract MockWETH is MockERC20 {
+    constructor() MockERC20("Wrapped QMS", "WQMS", 18) {}
+
+    function deposit() external payable {
+        _mint(msg.sender, msg.value);
+    }
+}

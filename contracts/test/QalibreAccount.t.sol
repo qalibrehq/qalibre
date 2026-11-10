@@ -51,8 +51,8 @@ contract QalibreAccountTest is BaseTest {
         OrderLib.Order memory oa = _order(alice, address(tokA), address(tokB), amountA, 0);
         OrderLib.Order memory ob = _order(bob, address(tokB), address(tokA), amountA * 2, 0);
         trades = new QalibreSettlement.Trade[](2);
-        trades[0] = _trade(oa, _sign(SESSION_PK, 1, oa), false);
-        trades[1] = _trade(ob, _sign(SESSION_PK, 1, ob), false);
+        trades[0] = _trade(oa, _sign(SESSION_PK, 1, oa));
+        trades[1] = _trade(ob, _sign(SESSION_PK, 1, ob));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -90,7 +90,10 @@ contract QalibreAccountTest is BaseTest {
     function test_sessionKeyTradesWithinLimits() public {
         _sessionTrade(500 ether);
         assertEq(tokA.balanceOf(address(alice)), 1_500 ether);
-        assertEq(tokB.balanceOf(address(alice)), 995 ether); // 1000 B minus 0.5% fee
+        uint256 direct = _direct(address(tokA), address(tokB), 500 ether);
+        uint256 capFee = (1000 ether * FEE_BPS) / 10_000;
+        uint256 savingsFee = ((1000 ether - direct) * SURPLUS_SHARE_BPS) / 10_000;
+        assertEq(tokB.balanceOf(address(alice)), 1000 ether - (capFee < savingsFee ? capFee : savingsFee));
         assertEq(alice.spentToday(address(tokA)), 500 ether);
     }
 
@@ -134,10 +137,37 @@ contract QalibreAccountTest is BaseTest {
 
     function test_sessionKeyIsNotAcceptedForERC1271() public view {
         bytes32 h = keccak256("anything");
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SESSION_PK, h);
+        bytes32 safe = alice.replaySafeHash(h);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SESSION_PK, safe);
         assertEq(alice.isValidSignature(h, abi.encodePacked(r, s, v)), bytes4(0xffffffff));
-        (v, r, s) = vm.sign(ALICE, h);
+        (v, r, s) = vm.sign(ALICE, safe);
         assertEq(alice.isValidSignature(h, abi.encodePacked(r, s, v)), bytes4(0x1626ba7e));
+    }
+
+    /// Audit 1.7: a signature for one account cannot be replayed against another account of the same owner.
+    function test_erc1271SignatureIsBoundToTheAccount() public {
+        QalibreAccountFactory.Setup memory s2 = QalibreAccountFactory.Setup({owner: aliceOwner, salt: 1, session: _defaultSession()});
+        (uint8 v0, bytes32 r0, bytes32 sg0) = vm.sign(ALICE, MessageHashUtils.toEthSignedMessageHash(factory.setupHash(s2)));
+        QalibreAccount second = factory.createAccount(s2, abi.encodePacked(r0, sg0, v0));
+        bytes32 h = keccak256("pay me");
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE, alice.replaySafeHash(h));
+        assertEq(alice.isValidSignature(h, abi.encodePacked(r, s, v)), bytes4(0x1626ba7e));
+        assertEq(second.isValidSignature(h, abi.encodePacked(r, s, v)), bytes4(0xffffffff));
+    }
+
+    /// Audit 3.2: native QMS from the faucet is wrapped automatically when an order needs it.
+    function test_nativeQmsIsWrappedAutomatically() public {
+        QalibreAccount carol = _createAccount(0xCA401, _defaultSession());
+        vm.deal(address(carol), 3 ether); // faucet-style native balance, no WQMS
+        tokB.mint(address(bob), 0);
+        OrderLib.Order memory oc = _order(carol, address(tokA), address(tokB), 2 ether, 0);
+        OrderLib.Order memory ob = _order(bob, address(tokB), address(tokA), 4 ether, 0);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](2);
+        trades[0] = _trade(oc, _sign(SESSION_PK, 1, oc));
+        trades[1] = _trade(ob, _sign(SESSION_PK, 1, ob));
+        _settle(_prices(2e18), trades, _noInteractions());
+        assertEq(address(carol).balance, 1 ether, "only the shortfall was wrapped");
+        assertGt(tokB.balanceOf(address(carol)), 0);
     }
 
     function test_revert_onlySettlementCanPullFunds() public {
@@ -162,6 +192,7 @@ contract QalibreAccountTest is BaseTest {
     }
 
     function test_revert_sellTokenNotAllowed() public {
+        router.addPool(address(tokC), address(tokB), 1_000 ether, 1_000 ether);
         tokC.mint(address(alice), 10 ether);
         OrderLib.Order memory oc = _order(alice, address(tokC), address(tokB), 1 ether, 0);
         QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](1);
@@ -265,9 +296,10 @@ contract QalibreAccountTest is BaseTest {
 
         // ECDSA owner signatures stop working for ERC-1271; the new scheme works.
         bytes32 h = keccak256("msg");
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE, h);
+        bytes32 safe = alice.replaySafeHash(h);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE, safe);
         assertEq(alice.isValidSignature(h, abi.encodePacked(r, s, v)), bytes4(0xffffffff));
-        assertEq(alice.isValidSignature(h, abi.encode(keccak256(abi.encode(secret, h)))), bytes4(0x1626ba7e));
+        assertEq(alice.isValidSignature(h, abi.encode(keccak256(abi.encode(secret, safe)))), bytes4(0x1626ba7e));
 
         // With a validator installed, the ECDSA owner address may be cleared entirely.
         vm.prank(aliceOwner);

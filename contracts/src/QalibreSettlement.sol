@@ -11,29 +11,29 @@ import {OrderLib} from "./libraries/OrderLib.sol";
 import {IQalibreAccount} from "./interfaces/IQalibreAccount.sol";
 import {IVenueAdapter} from "./interfaces/IVenueAdapter.sol";
 
-/// @title QalibreSettlement
+/// @title QalibreSettlement (v2)
 /// @notice Batch auction with uniform clearing prices.
 ///
-/// A whitelisted solver submits a batch: a list of tokens with one clearing price each, the signed orders,
-/// and the venue swaps (interactions) needed for whatever the orders could not match against each other.
+/// A whitelisted solver submits a batch: tokens with one clearing price each, the signed orders, and the
+/// venue swaps needed for whatever the orders could not match against each other.
 ///
 /// Guarantees enforced on-chain, whatever the solver does:
-///   1. Uniform prices: every order receives sellAmount * price[sell] / price[buy] (minus the fee),
-///      so all traders on the same pair in the same batch get the same rate.
-///   2. Limit prices: every order receives at least its signed minBuyAmount, after fees. Otherwise the batch reverts.
-///   3. Fee cap: the protocol fee can never exceed MAX_FEE_BPS (0.5%) of the trade.
-///   3b. Never worse than direct: when a trade carries a reference venue, the contract quotes what the order
-///      would have received swapping directly on that venue's pool (before any batch swap moves the price).
-///      The trade reverts unless the batch price is at least as good, and the fee is taken ONLY from the
-///      improvement: fee = min(feeBps of the trade, surplusShareBps of the improvement). Qalibre earns only
-///      when it saves the user money, and the user always ends up at or above the direct price.
-///   4. No skimming: after the batch, the contract may keep at most MAX_DUST_BPS (0.01%) of payouts as
-///      rounding dust. Every other token it received has been paid out to traders.
-///   5. Verifiable receipts: if asked, the contract quotes the direct venue price for each order BEFORE any
-///      batch swaps, and emits it next to the price the trader actually got.
+///   1. Uniform prices. Every buyer of a token in a batch receives the same rate: sellAmount * p[sell] / p[buy],
+///      scaled by the same surplus multiplier (see 4).
+///   2. Never worse than a direct swap. For every trade the contract itself quotes the canonical reference venue
+///      (fixed here, changeable only through a public 48-hour delay) before any batch swap. A trade settles only if
+///      it receives at least that amount before fees. Session-key orders without a reference price are rejected.
+///   3. Limit prices. Every order receives at least its signed minBuyAmount after every fee.
+///   4. Nothing is kept. Whatever the venue legs return beyond the clearing amounts is distributed to that
+///      token's buyers pro rata. The contract keeps only sub-wei rounding dust.
+///   5. Fees. Qalibre's fee is taken only from the improvement over the direct quote:
+///      min(feeBps of the trade, surplusShareBps of the improvement), hard-capped at 0.5% and 50%.
+///      The network fee is passed through at cost: at most what the user signed, and at most 0.5% of the trade.
+///   6. Verifiable receipts. Each trade emits the direct quote next to what the trader received.
 ///
-/// The owner can only: set the fee (<= cap), the fee recipient, the solver list and the adapter list.
-/// The owner has no function to move tokens.
+/// Governance. The owner cannot move tokens. Adding a solver or adapter, changing the reference venue, or raising a
+/// fee takes effect only after ADMIN_DELAY and is announced by an event first. Removing a solver or adapter, and
+/// lowering a fee, take effect immediately (those can only make users safer).
 contract QalibreSettlement is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -42,7 +42,7 @@ contract QalibreSettlement is Ownable2Step, ReentrancyGuard {
         uint256 buyTokenIndex;
         OrderLib.Order order;
         bytes signature;
-        address refAdapter; // venue for the "swap directly instead" comparison (direct pool); zero = skip
+        uint256 networkFee; // in buyToken, at cost
     }
 
     struct Interaction {
@@ -54,18 +54,39 @@ contract QalibreSettlement is Ownable2Step, ReentrancyGuard {
         bytes data;
     }
 
-    uint256 public constant MAX_FEE_BPS = 50; // 0.50% hard ceiling
-    uint256 public constant MAX_DUST_BPS = 1; // 0.01%
-    uint256 public constant MAX_SURPLUS_SHARE_BPS = 5_000; // at most half of the savings
+    /// @dev Per-trade working memory.
+    struct Fill {
+        bytes32 digest;
+        uint256 gross;
+        uint256 direct;
+    }
+
+    uint256 public constant MAX_FEE_BPS = 50; // 0.50%
+    uint256 public constant MAX_SURPLUS_SHARE_BPS = 5_000; // 50% of the improvement
+    uint256 public constant MAX_NETWORK_FEE_BPS = 50; // 0.50%
+    uint256 public constant ADMIN_DELAY = 2 days;
     uint256 internal constant BPS = 10_000;
+    uint8 internal constant SIG_KIND_OWNER = 0;
 
     uint256 public feeBps;
     uint256 public surplusShareBps;
     address public feeRecipient;
+    IVenueAdapter public referenceVenue;
+    bool public bootstrapped;
+
     mapping(address => bool) public isSolver;
     mapping(address => bool) public isAdapter;
     mapping(bytes32 => bool) public filled;
     uint256 public batchCount;
+
+    // Pending, delayed changes: target => earliest execution time.
+    mapping(address => uint256) public pendingSolver;
+    mapping(address => uint256) public pendingAdapter;
+    address public pendingReference;
+    uint256 public pendingReferenceEta;
+    uint256 public pendingFeeBps;
+    uint256 public pendingSurplusShareBps;
+    uint256 public pendingFeeEta;
 
     event TradeSettled(
         uint256 indexed batchId,
@@ -76,23 +97,25 @@ contract QalibreSettlement is Ownable2Step, ReentrancyGuard {
         uint256 sellAmount,
         uint256 buyAmount,
         uint256 fee,
+        uint256 networkFee,
         uint256 directQuote
     );
     event InteractionExecuted(
         uint256 indexed batchId, address indexed adapter, address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut
     );
     event BatchSettled(uint256 indexed batchId, address indexed solver, uint256 trades, uint256 interactions);
+    event SurplusDistributed(uint256 indexed batchId, address indexed token, uint256 amount);
     event DustSwept(uint256 indexed batchId, address indexed token, uint256 amount);
-    event FeeChanged(uint256 feeBps);
-    event SurplusShareChanged(uint256 surplusShareBps);
-    event FeeRecipientChanged(address recipient);
+    event ChangeScheduled(bytes32 indexed what, address indexed target, uint256 value, uint256 eta);
     event SolverSet(address indexed solver, bool allowed);
     event AdapterSet(address indexed adapter, bool allowed);
+    event ReferenceVenueSet(address indexed venue);
+    event FeesSet(uint256 feeBps, uint256 surplusShareBps);
+    event FeeRecipientChanged(address recipient);
 
     error NotSolver();
     error NotAdapter();
     error FeeTooHigh();
-    error NotBetterThanDirect(bytes32 orderDigest, uint256 batchAmount, uint256 directAmount);
     error ZeroAddress();
     error BadTokens();
     error BadPrices();
@@ -100,17 +123,37 @@ contract QalibreSettlement is Ownable2Step, ReentrancyGuard {
     error OrderExpired();
     error OrderFilled();
     error WrongAmountReceived();
+    error NoReferencePrice(bytes32 orderDigest);
+    error NotBetterThanDirect(bytes32 orderDigest, uint256 batchAmount, uint256 directAmount);
+    error NetworkFeeTooHigh(bytes32 orderDigest);
     error LimitPriceViolated(bytes32 orderDigest, uint256 buyAmount, uint256 minBuyAmount);
     error InteractionUnderdelivered(uint256 index, uint256 received, uint256 minAmountOut);
-    error ExcessLeftover(address token, uint256 leftover, uint256 allowed);
+    error InsufficientProceeds(address token, uint256 available, uint256 owed);
+    error ExcessLeftover(address token, uint256 leftover);
     error BalanceDecreased(address token);
+    error NotReady(uint256 eta);
+    error NothingScheduled();
+    error AlreadyBootstrapped();
 
     constructor(address initialOwner, address feeRecipient_, uint256 feeBps_, uint256 surplusShareBps_)
         Ownable(initialOwner)
     {
         _setFeeRecipient(feeRecipient_);
-        _setFee(feeBps_);
-        _setSurplusShare(surplusShareBps_);
+        _setFees(feeBps_, surplusShareBps_);
+    }
+
+    /// @notice One-time setup, before any batch can settle. After this, every addition is delayed.
+    function bootstrap(address[] calldata solvers, address[] calldata adapters, IVenueAdapter referenceVenue_)
+        external
+        onlyOwner
+    {
+        if (bootstrapped) revert AlreadyBootstrapped();
+        if (address(referenceVenue_) == address(0)) revert ZeroAddress();
+        bootstrapped = true;
+        for (uint256 i; i < solvers.length; ++i) _setSolver(solvers[i], true);
+        for (uint256 i; i < adapters.length; ++i) _setAdapter(adapters[i], true);
+        referenceVenue = referenceVenue_;
+        emit ReferenceVenueSet(address(referenceVenue_));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -144,15 +187,15 @@ contract QalibreSettlement is Ownable2Step, ReentrancyGuard {
         }
 
         batchId = ++batchCount;
-        uint256[] memory startBalance = _balances(tokens);
-        uint256[] memory owed = new uint256[](n);
-        uint256[] memory fees = new uint256[](n);
-        uint256[] memory payout = new uint256[](trades.length);
-        uint256 fee_ = feeBps;
+        uint256[] memory startBalance = new uint256[](n);
+        for (uint256 i; i < n; ++i) startBalance[i] = IERC20(tokens[i]).balanceOf(address(this));
 
-        // 1. Pull every order's sell tokens, compute its uniform-price payout and check its limit.
+        // 1. Pull sell tokens, take the reference quote, compute each order's uniform-price amount.
+        Fill[] memory fills = new Fill[](trades.length);
+        uint256[] memory owedGross = new uint256[](n);
         for (uint256 t; t < trades.length; ++t) {
-            payout[t] = _pull(batchId, tokens, prices, trades[t], fee_, owed, fees);
+            fills[t] = _pull(tokens, prices, trades[t]);
+            owedGross[trades[t].buyTokenIndex] += fills[t].gross;
         }
 
         // 2. Trade the net imbalance on external venues.
@@ -160,61 +203,66 @@ contract QalibreSettlement is Ownable2Step, ReentrancyGuard {
             _interact(batchId, k, tokens, interactions[k]);
         }
 
-        // 3. Pay every trader. Proceeds always go to the order's own account.
-        for (uint256 t; t < trades.length; ++t) {
-            if (payout[t] > 0) {
-                IERC20(trades[t].order.buyToken).safeTransfer(trades[t].order.account, payout[t]);
+        // 3. What each token's buyers can be paid: everything that arrived, never less than owed.
+        uint256[] memory surplus = new uint256[](n);
+        for (uint256 i; i < n; ++i) {
+            uint256 bal = IERC20(tokens[i]).balanceOf(address(this));
+            if (bal < startBalance[i]) revert BalanceDecreased(tokens[i]);
+            uint256 available = bal - startBalance[i];
+            if (owedGross[i] == 0) {
+                if (available > trades.length) revert ExcessLeftover(tokens[i], available);
+            } else {
+                if (available < owedGross[i]) revert InsufficientProceeds(tokens[i], available, owedGross[i]);
+                surplus[i] = available - owedGross[i];
+                if (surplus[i] > 0) emit SurplusDistributed(batchId, tokens[i], surplus[i]);
             }
         }
 
-        // 4. Pay fees, then prove nothing beyond rounding dust stayed behind.
+        // 4. Pay every trader: uniform amount + pro-rata surplus, checked against direct and limit.
+        uint256[] memory feeTotals = new uint256[](n);
+        for (uint256 t; t < trades.length; ++t) {
+            uint256 b = trades[t].buyTokenIndex;
+            feeTotals[b] += _pay(batchId, trades[t], fills[t], surplus[b], owedGross[b]);
+        }
+
+        // 5. Fees to the fee recipient, then sweep sub-wei rounding dust.
         address recipient = feeRecipient;
         for (uint256 i; i < n; ++i) {
             IERC20 token = IERC20(tokens[i]);
-            if (fees[i] > 0) token.safeTransfer(recipient, fees[i]);
-            uint256 endBalance = token.balanceOf(address(this));
-            if (endBalance < startBalance[i]) revert BalanceDecreased(tokens[i]);
-            uint256 leftover = endBalance - startBalance[i];
-            uint256 allowed = (owed[i] * MAX_DUST_BPS) / BPS + trades.length;
-            if (leftover > allowed) revert ExcessLeftover(tokens[i], leftover, allowed);
-            if (leftover > 0) {
-                token.safeTransfer(recipient, leftover);
-                emit DustSwept(batchId, tokens[i], leftover);
+            if (feeTotals[i] > 0) token.safeTransfer(recipient, feeTotals[i]);
+            uint256 bal = token.balanceOf(address(this));
+            if (bal < startBalance[i]) revert BalanceDecreased(tokens[i]);
+            uint256 dust = bal - startBalance[i];
+            if (dust > trades.length) revert ExcessLeftover(tokens[i], dust);
+            if (dust > 0) {
+                token.safeTransfer(recipient, dust);
+                emit DustSwept(batchId, tokens[i], dust);
             }
         }
 
         emit BatchSettled(batchId, msg.sender, trades.length, interactions.length);
     }
 
-    function _pull(
-        uint256 batchId,
-        address[] calldata tokens,
-        uint256[] calldata prices,
-        Trade calldata tr,
-        uint256 fee_,
-        uint256[] memory owed,
-        uint256[] memory fees
-    ) internal returns (uint256 net) {
+    function _pull(address[] calldata tokens, uint256[] calldata prices, Trade calldata tr)
+        internal
+        returns (Fill memory f)
+    {
         OrderLib.Order calldata o = tr.order;
-        if (tokens[tr.sellTokenIndex] != o.sellToken || tokens[tr.buyTokenIndex] != o.buyToken) {
-            revert TokenMismatch();
-        }
+        if (tokens[tr.sellTokenIndex] != o.sellToken || tokens[tr.buyTokenIndex] != o.buyToken) revert TokenMismatch();
         if (o.sellToken == o.buyToken) revert TokenMismatch();
         if (block.timestamp > o.validTo) revert OrderExpired();
 
-        bytes32 digest = OrderLib.digest(address(this), o);
-        if (filled[digest]) revert OrderFilled();
-        filled[digest] = true;
+        f.digest = OrderLib.digest(address(this), o);
+        if (filled[f.digest]) revert OrderFilled();
+        filled[f.digest] = true;
 
-        // Direct-swap reference quote, taken before any batch swap moves the venue's price.
-        uint256 directQuote;
-        if (tr.refAdapter != address(0)) {
-            if (!isAdapter[tr.refAdapter]) revert NotAdapter();
-            try IVenueAdapter(tr.refAdapter).quote(o.sellToken, o.buyToken, o.sellAmount, "") returns (
-                uint256 q
-            ) {
-                directQuote = q;
-            } catch {}
+        // Mandatory reference quote, before any batch swap moves the price.
+        try referenceVenue.quote(o.sellToken, o.buyToken, o.sellAmount, "") returns (uint256 q) {
+            f.direct = q;
+        } catch {}
+        // Only the owner may trade without a reference price (for example a token with no pool yet).
+        if (f.direct == 0 && (tr.signature.length == 0 || uint8(tr.signature[0]) != SIG_KIND_OWNER)) {
+            revert NoReferencePrice(f.digest);
         }
 
         IERC20 sell = IERC20(o.sellToken);
@@ -222,19 +270,30 @@ contract QalibreSettlement is Ownable2Step, ReentrancyGuard {
         IQalibreAccount(o.account).authorizeOrder(o, tr.signature);
         if (sell.balanceOf(address(this)) - before != o.sellAmount) revert WrongAmountReceived();
 
-        uint256 gross = Math.mulDiv(o.sellAmount, prices[tr.sellTokenIndex], prices[tr.buyTokenIndex]);
-        uint256 fee = (gross * fee_) / BPS;
-        if (tr.refAdapter != address(0)) {
-            if (gross < directQuote) revert NotBetterThanDirect(digest, gross, directQuote);
-            uint256 surplusFee = ((gross - directQuote) * surplusShareBps) / BPS;
-            if (surplusFee < fee) fee = surplusFee;
-        }
-        net = gross - fee;
-        if (net < o.minBuyAmount) revert LimitPriceViolated(digest, net, o.minBuyAmount);
+        f.gross = Math.mulDiv(o.sellAmount, prices[tr.sellTokenIndex], prices[tr.buyTokenIndex]);
+    }
 
-        owed[tr.buyTokenIndex] += net;
-        fees[tr.buyTokenIndex] += fee;
-        emit TradeSettled(batchId, o.account, digest, o.sellToken, o.buyToken, o.sellAmount, net, fee, directQuote);
+    function _pay(uint256 batchId, Trade calldata tr, Fill memory f, uint256 surplus, uint256 owedGross)
+        internal
+        returns (uint256 fees)
+    {
+        OrderLib.Order calldata o = tr.order;
+        uint256 amount = f.gross + (surplus == 0 ? 0 : Math.mulDiv(surplus, f.gross, owedGross));
+        if (amount < f.direct) revert NotBetterThanDirect(f.digest, amount, f.direct);
+
+        uint256 fee = (amount * feeBps) / BPS;
+        if (f.direct > 0) {
+            uint256 improvementFee = ((amount - f.direct) * surplusShareBps) / BPS;
+            if (improvementFee < fee) fee = improvementFee;
+        }
+        uint256 nf = tr.networkFee;
+        if (nf > o.maxNetworkFee || nf * BPS > amount * MAX_NETWORK_FEE_BPS) revert NetworkFeeTooHigh(f.digest);
+
+        uint256 net = amount - fee - nf;
+        if (net < o.minBuyAmount) revert LimitPriceViolated(f.digest, net, o.minBuyAmount);
+        if (net > 0) IERC20(o.buyToken).safeTransfer(o.account, net);
+        emit TradeSettled(batchId, o.account, f.digest, o.sellToken, o.buyToken, o.sellAmount, net, fee, nf, f.direct);
+        return fee + nf;
     }
 
     function _interact(uint256 batchId, uint256 k, address[] calldata tokens, Interaction calldata it) internal {
@@ -251,49 +310,105 @@ contract QalibreSettlement is Ownable2Step, ReentrancyGuard {
         emit InteractionExecuted(batchId, it.adapter, tokenIn, tokenOut, it.amountIn, received);
     }
 
-    function _balances(address[] calldata tokens) internal view returns (uint256[] memory b) {
-        b = new uint256[](tokens.length);
-        for (uint256 i; i < tokens.length; ++i) {
-            b[i] = IERC20(tokens[i]).balanceOf(address(this));
+    // ---------------------------------------------------------------------------------------------
+    // Governance: additions are delayed and announced; removals are immediate. No function moves tokens.
+    // ---------------------------------------------------------------------------------------------
+
+    function scheduleSolver(address solver) external onlyOwner {
+        if (solver == address(0)) revert ZeroAddress();
+        pendingSolver[solver] = block.timestamp + ADMIN_DELAY;
+        emit ChangeScheduled("solver", solver, 1, pendingSolver[solver]);
+    }
+
+    function executeSolver(address solver) external onlyOwner {
+        _ready(pendingSolver[solver]);
+        delete pendingSolver[solver];
+        _setSolver(solver, true);
+    }
+
+    function removeSolver(address solver) external onlyOwner {
+        delete pendingSolver[solver];
+        _setSolver(solver, false);
+    }
+
+    function scheduleAdapter(address adapter) external onlyOwner {
+        if (adapter == address(0)) revert ZeroAddress();
+        pendingAdapter[adapter] = block.timestamp + ADMIN_DELAY;
+        emit ChangeScheduled("adapter", adapter, 1, pendingAdapter[adapter]);
+    }
+
+    function executeAdapter(address adapter) external onlyOwner {
+        _ready(pendingAdapter[adapter]);
+        delete pendingAdapter[adapter];
+        _setAdapter(adapter, true);
+    }
+
+    function removeAdapter(address adapter) external onlyOwner {
+        delete pendingAdapter[adapter];
+        _setAdapter(adapter, false);
+    }
+
+    function scheduleReferenceVenue(address venue) external onlyOwner {
+        if (venue == address(0)) revert ZeroAddress();
+        pendingReference = venue;
+        pendingReferenceEta = block.timestamp + ADMIN_DELAY;
+        emit ChangeScheduled("reference", venue, 0, pendingReferenceEta);
+    }
+
+    function executeReferenceVenue() external onlyOwner {
+        if (pendingReference == address(0)) revert NothingScheduled();
+        _ready(pendingReferenceEta);
+        referenceVenue = IVenueAdapter(pendingReference);
+        delete pendingReference;
+        delete pendingReferenceEta;
+        emit ReferenceVenueSet(address(referenceVenue));
+    }
+
+    /// @notice Lowering either fee applies at once; raising either is delayed.
+    function setFees(uint256 newFeeBps, uint256 newShareBps) external onlyOwner {
+        if (newFeeBps > MAX_FEE_BPS || newShareBps > MAX_SURPLUS_SHARE_BPS) revert FeeTooHigh();
+        if (newFeeBps <= feeBps && newShareBps <= surplusShareBps) {
+            _setFees(newFeeBps, newShareBps);
+            delete pendingFeeEta;
+        } else {
+            pendingFeeBps = newFeeBps;
+            pendingSurplusShareBps = newShareBps;
+            pendingFeeEta = block.timestamp + ADMIN_DELAY;
+            emit ChangeScheduled("fees", address(0), (newFeeBps << 128) | newShareBps, pendingFeeEta);
         }
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // Admin (cannot touch funds)
-    // ---------------------------------------------------------------------------------------------
-
-    function setFee(uint256 newFeeBps) external onlyOwner {
-        _setFee(newFeeBps);
-    }
-
-    function setSurplusShare(uint256 newShareBps) external onlyOwner {
-        _setSurplusShare(newShareBps);
+    function executeFees() external onlyOwner {
+        if (pendingFeeEta == 0) revert NothingScheduled();
+        _ready(pendingFeeEta);
+        delete pendingFeeEta;
+        _setFees(pendingFeeBps, pendingSurplusShareBps);
     }
 
     function setFeeRecipient(address recipient) external onlyOwner {
         _setFeeRecipient(recipient);
     }
 
-    function setSolver(address solver, bool allowed) external onlyOwner {
+    function _ready(uint256 eta) internal view {
+        if (eta == 0) revert NothingScheduled();
+        if (block.timestamp < eta) revert NotReady(eta);
+    }
+
+    function _setSolver(address solver, bool allowed) internal {
         isSolver[solver] = allowed;
         emit SolverSet(solver, allowed);
     }
 
-    function setAdapter(address adapter, bool allowed) external onlyOwner {
+    function _setAdapter(address adapter, bool allowed) internal {
         isAdapter[adapter] = allowed;
         emit AdapterSet(adapter, allowed);
     }
 
-    function _setFee(uint256 newFeeBps) internal {
-        if (newFeeBps > MAX_FEE_BPS) revert FeeTooHigh();
+    function _setFees(uint256 newFeeBps, uint256 newShareBps) internal {
+        if (newFeeBps > MAX_FEE_BPS || newShareBps > MAX_SURPLUS_SHARE_BPS) revert FeeTooHigh();
         feeBps = newFeeBps;
-        emit FeeChanged(newFeeBps);
-    }
-
-    function _setSurplusShare(uint256 newShareBps) internal {
-        if (newShareBps > MAX_SURPLUS_SHARE_BPS) revert FeeTooHigh();
         surplusShareBps = newShareBps;
-        emit SurplusShareChanged(newShareBps);
+        emit FeesSet(newFeeBps, newShareBps);
     }
 
     function _setFeeRecipient(address recipient) internal {

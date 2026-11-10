@@ -11,7 +11,7 @@
 import { decodeEventLog, type Address, type Hex, type LocalAccount, type PublicClient } from 'viem';
 import { buildQubo, solveAnneal, toMatrixMarket, type Qubo } from './qubo.js';
 import { clearPair, PRICE_ONE, type Clearing, type FeeConfig, type PairOrder } from './clearing.js';
-import { QalibreSettlementAbi, readReserves, waitForConfirmations, walletClient, type Deployment, type Order } from './chain.js';
+import { QalibreSettlementAbi, readReserves, waitForConfirmations, walletClient, WQMS, type Deployment, type Order } from './chain.js';
 
 export interface SignedOrder {
   id: string;
@@ -26,14 +26,27 @@ export interface BatchPlan {
   selection: number[];
   matrixMarket: string;
   clearing: Clearing;
-  args: readonly [Address[], bigint[], unknown[], unknown[]];
+  args: [Address[], bigint[], TradeArg[], unknown[]];
   reservesBlock: bigint;
+  /** WQMS per unit of token B and A, for converting gas cost (QMS) into each trader's buy token. */
+  qmsPer: { a: number; b: number; tokenA: Address };
+}
+
+interface TradeArg {
+  sellTokenIndex: bigint;
+  buyTokenIndex: bigint;
+  order: Order;
+  signature: Hex;
+  networkFee: bigint;
+  /** headroom between the expected payout and the order's minimum, never exceeded by the network fee */
+  headroom: bigint;
+  expectedGross: bigint;
 }
 
 export interface BatchResult {
   hash: Hex;
   block: bigint;
-  receipts: { account: Address; orderDigest: Hex; sellAmount: bigint; buyAmount: bigint; fee: bigint; directQuote: bigint }[];
+  receipts: { account: Address; orderDigest: Hex; sellAmount: bigint; buyAmount: bigint; fee: bigint; networkFee: bigint; directQuote: bigint }[];
 }
 
 /** Urgency weight in the QUBO: how much executing now is worth relative to price impact. */
@@ -89,12 +102,15 @@ export async function planBatch(
     .filter((o) => filled.has(o.id))
     .map((o) => {
       const sellsA = o.order.sellToken.toLowerCase() === tokenA.toLowerCase();
+      const fill = clearing.fills.find((f) => f.id === o.id)!;
       return {
         sellTokenIndex: sellsA ? 0n : 1n,
         buyTokenIndex: sellsA ? 1n : 0n,
         order: o.order,
         signature: o.signature,
-        refAdapter: dep.qwapAdapter,
+        networkFee: 0n,
+        headroom: fill.net > o.order.minBuyAmount ? fill.net - o.order.minBuyAmount : 0n,
+        expectedGross: fill.gross,
       };
     });
   const interactions = clearing.swap
@@ -107,7 +123,15 @@ export async function planBatch(
         data: '0x' as Hex,
       }]
     : [];
-  const args = [[tokenA, tokenB], [clearing.r, PRICE_ONE], trades, interactions] as [Address[], bigint[], unknown[], unknown[]];
+  const args = [[tokenA, tokenB], [clearing.r, PRICE_ONE], trades, interactions] as [Address[], bigint[], TradeArg[], unknown[]];
+  // QMS value of one base unit of each token, from the pool (1 for WQMS itself).
+  const aIsQms = tokenA.toLowerCase() === WQMS.toLowerCase();
+  const bIsQms = tokenB.toLowerCase() === WQMS.toLowerCase();
+  const qmsPer = {
+    tokenA,
+    a: aIsQms ? 1 : bIsQms ? Number(res.b) / Number(res.a) : 0,
+    b: bIsQms ? 1 : aIsQms ? Number(res.a) / Number(res.b) : 0,
+  };
 
   return {
     tokenA,
@@ -118,19 +142,48 @@ export async function planBatch(
     clearing,
     args,
     reservesBlock: res.block,
+    qmsPer,
   };
+}
+
+/**
+ * Network fee at cost: estimate the batch's gas, split it evenly per trade, convert to each trader's buy token,
+ * and never exceed the signed maximum, the contract's 0.5% cap, or the trade's headroom above its minimum.
+ */
+async function applyNetworkFees(client: PublicClient, dep: Deployment, solver: LocalAccount, plan: BatchPlan) {
+  const [tokens, prices, trades, interactions] = plan.args;
+  const strip = (t: TradeArg) => ({ sellTokenIndex: t.sellTokenIndex, buyTokenIndex: t.buyTokenIndex, order: t.order, signature: t.signature, networkFee: t.networkFee });
+  const gas = await client.estimateContractGas({ address: dep.settlement, abi: QalibreSettlementAbi, functionName: 'settle', args: [tokens, prices, trades.map(strip), interactions] as never, account: solver });
+  // At cost: the block's base fee, which is what the batch actually pays (we add only a negligible tip).
+  // Deliberately not eth_gasPrice, which suggests about 2x the base fee and would overcharge users.
+  const baseFee = (await client.getBlock({ blockTag: 'latest' })).baseFeePerGas ?? 0n;
+  // eth_estimateGas runs ~30% above gas actually used (measured: 601k used), so charge 70% of the estimate:
+  // users pay at cost or less, and Qalibre absorbs any difference.
+  const perTradeWei = (gas * baseFee * 70n) / 100n / BigInt(Math.max(1, trades.length));
+  for (const t of trades) {
+    const buyIsA = t.order.buyToken.toLowerCase() === plan.qmsPer.tokenA.toLowerCase();
+    const qmsPerUnit = buyIsA ? plan.qmsPer.a : plan.qmsPer.b;
+    let fee = qmsPerUnit > 0 ? BigInt(Math.ceil(Number(perTradeWei) / qmsPerUnit)) : 0n;
+    const cap = (t.expectedGross * 50n) / 10_000n;
+    for (const limit of [t.order.maxNetworkFee, cap, t.headroom]) if (fee > limit) fee = limit;
+    t.networkFee = fee;
+  }
+  return trades.map(strip);
 }
 
 /** Simulate against the current chain state, then submit and wait for confirmations. */
 export async function executeBatch(client: PublicClient, dep: Deployment, solver: LocalAccount, plan: BatchPlan, confirmations?: bigint): Promise<BatchResult> {
+  const trades = await applyNetworkFees(client, dep, solver, plan);
   const { request } = await client.simulateContract({
     address: dep.settlement,
     abi: QalibreSettlementAbi,
     functionName: 'settle',
-    args: plan.args as never,
+    args: [plan.args[0], plan.args[1], trades, plan.args[3]] as never,
     account: solver,
   });
-  const hash = await walletClient(solver).writeContract(request as never);
+  // Explicit fees: a negligible tip keeps the real cost at the base fee we charged against.
+  const base = (await client.getBlock({ blockTag: 'latest' })).baseFeePerGas ?? 0n;
+  const hash = await walletClient(solver).writeContract({ ...(request as object), maxPriorityFeePerGas: 1_000n, maxFeePerGas: base * 2n + 1_000n } as never);
   const receipt = await waitForConfirmations(client, hash, confirmations);
   const receipts: BatchResult['receipts'] = [];
   for (const log of receipt.logs) {
@@ -139,7 +192,7 @@ export async function executeBatch(client: PublicClient, dep: Deployment, solver
       const ev = decodeEventLog({ abi: QalibreSettlementAbi, data: log.data, topics: log.topics });
       if (ev.eventName === 'TradeSettled') {
         const a = ev.args as unknown as BatchResult['receipts'][number];
-        receipts.push({ account: a.account, orderDigest: a.orderDigest, sellAmount: a.sellAmount, buyAmount: a.buyAmount, fee: a.fee, directQuote: a.directQuote });
+        receipts.push({ account: a.account, orderDigest: a.orderDigest, sellAmount: a.sellAmount, buyAmount: a.buyAmount, fee: a.fee, networkFee: a.networkFee, directQuote: a.directQuote });
       }
     } catch {
       /* not one of ours */

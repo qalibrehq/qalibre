@@ -11,6 +11,10 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @dev The attacker holds BOTH the session key and the solver role (i.e. a fully compromised Qalibre backend)
 ///      and throws random actions at a victim's account.
+interface IVenueAdapterLike {
+    function quote(address, address, uint256, bytes calldata) external view returns (uint256);
+}
+
 contract CompromisedBackend is Test {
     QalibreAccount public immutable victim;
     QalibreAccount public immutable counterparty;
@@ -22,6 +26,9 @@ contract CompromisedBackend is Test {
     address public immutable adapter;
 
     uint256 public victimSoldToday;
+    /// Set if the victim ever received less than a direct swap would have paid (audit 1.1).
+    bool public victimShortchanged;
+    uint256 public settledCount;
     uint256 public lastDay;
     uint256 public nonce;
 
@@ -77,9 +84,13 @@ contract CompromisedBackend is Test {
             victimSoldToday = 0;
         }
         uint256 before = tokA.balanceOf(address(victim));
+        uint256 beforeB = tokB.balanceOf(address(victim));
+        uint256 direct = IVenueAdapterLike(adapter).quote(address(tokA), address(tokB), amount, "");
         vm.prank(attacker);
         try settlement.settle(toks, prices, trades, new QalibreSettlement.Interaction[](0)) {
             victimSoldToday += before - tokA.balanceOf(address(victim));
+            if (tokB.balanceOf(address(victim)) - beforeB < direct) victimShortchanged = true;
+            settledCount++;
         } catch {}
     }
 
@@ -91,7 +102,7 @@ contract CompromisedBackend is Test {
         internal
         returns (OrderLib.Order memory)
     {
-        return OrderLib.Order(address(a), sell, buy, amt, minBuy, uint64(block.timestamp + 1 hours), ++nonce);
+        return OrderLib.Order(address(a), sell, buy, amt, minBuy, 0, uint64(block.timestamp + 1 hours), ++nonce);
     }
 
     function _t(OrderLib.Order memory o) internal view returns (QalibreSettlement.Trade memory t) {
@@ -122,7 +133,9 @@ contract InvariantsTest is BaseTest {
         victimOwner = vm.addr(0xA11CE);
         QalibreAccount counterparty = _createAccount(0xB0B, _wideSession());
         // Worst case: the attacker is also a whitelisted solver.
-        settlement.setSolver(sessionKey, true);
+        settlement.scheduleSolver(sessionKey);
+        vm.warp(block.timestamp + 2 days);
+        settlement.executeSolver(sessionKey);
         handler = new CompromisedBackend(victim, counterparty, settlement, tokA, tokB, SESSION_PK, address(adapter));
         targetContract(address(handler));
     }
@@ -138,6 +151,12 @@ contract InvariantsTest is BaseTest {
         assertEq(tokB.balanceOf(sessionKey), 0);
     }
 
+    /// Audit 1.1: even with the session key AND the solver role, and its own account as the counterparty,
+    /// the attacker can never settle the victim below what a direct swap would pay.
+    function invariant_victimNeverBelowDirect() public view {
+        assertFalse(handler.victimShortchanged());
+    }
+
     /// Ownership and the trusted settlement contract never change.
     function invariant_controlNeverChanges() public view {
         assertEq(victim.owner(), victimOwner);
@@ -147,6 +166,16 @@ contract InvariantsTest is BaseTest {
     /// Whatever the attacker does, the victim never sells more than its daily cap (2000 A).
     function invariant_dailyCapHolds() public view {
         assertLe(handler.victimSoldToday(), 2_000 ether);
+    }
+
+    /// Guard against a vacuous invariant: the attacker's handler really can settle trades (at fair prices),
+    /// so "victim never below direct" is tested against batches that actually executed.
+    function test_handlerCanActuallySettle() public {
+        handler.sellAtAttackerPrice(10 ether, 2e18); // a fair price: must settle
+        assertEq(handler.settledCount(), 1, "handler settled a real batch");
+        handler.sellAtAttackerPrice(10 ether, 1e18); // a bargain for the attacker: must be refused
+        assertEq(handler.settledCount(), 1, "bad-price batch was refused");
+        assertFalse(handler.victimShortchanged());
     }
 
     /// The settlement contract never accumulates funds.
