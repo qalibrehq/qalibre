@@ -2,17 +2,17 @@
 pragma solidity 0.8.28;
 
 import {BaseTest} from "./utils/Base.t.sol";
-import {QensaAccount} from "../src/QensaAccount.sol";
-import {QensaSettlement} from "../src/QensaSettlement.sol";
+import {QalibreAccount} from "../src/QalibreAccount.sol";
+import {QalibreSettlement} from "../src/QalibreSettlement.sol";
 import {OrderLib} from "../src/libraries/OrderLib.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract QensaSettlementTest is BaseTest {
+contract QalibreSettlementTest is BaseTest {
     uint256 internal constant ALICE = 0xA11CE;
     uint256 internal constant BOB = 0xB0B;
 
-    QensaAccount internal alice;
-    QensaAccount internal bob;
+    QalibreAccount internal alice;
+    QalibreAccount internal bob;
 
     function setUp() public override {
         super.setUp();
@@ -28,7 +28,7 @@ contract QensaSettlementTest is BaseTest {
     function test_matchesOppositeOrdersWithoutTouchingTheExchange() public {
         OrderLib.Order memory oa = _order(alice, address(tokA), address(tokB), 100 ether, 0);
         OrderLib.Order memory ob = _order(bob, address(tokB), address(tokA), 200 ether, 0);
-        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](2);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](2);
         trades[0] = _trade(oa, _sign(SESSION_PK, 1, oa), false);
         trades[1] = _trade(ob, _sign(SESSION_PK, 1, ob), false);
 
@@ -55,10 +55,10 @@ contract QensaSettlementTest is BaseTest {
         (uint256 bPerA, uint256 excessA) = _solve(100 ether, 100 ether);
         OrderLib.Order memory oa = _order(alice, address(tokA), address(tokB), 100 ether, directAlice);
         OrderLib.Order memory ob = _order(bob, address(tokB), address(tokA), 100 ether, directBob);
-        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](2);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](2);
         trades[0] = _trade(oa, _sign(SESSION_PK, 1, oa), true);
         trades[1] = _trade(ob, _sign(SESSION_PK, 1, ob), true);
-        QensaSettlement.Interaction[] memory its = new QensaSettlement.Interaction[](1);
+        QalibreSettlement.Interaction[] memory its = new QalibreSettlement.Interaction[](1);
         its[0] = _interaction(address(tokA), address(tokB), excessA);
 
         _settle(_prices(bPerA), trades, its);
@@ -83,7 +83,7 @@ contract QensaSettlementTest is BaseTest {
         tokB.mint(address(bob), 2_000 ether);
         OrderLib.Order memory oa = _order(alice, address(tokA), address(tokB), 1_500 ether, 0);
         OrderLib.Order memory ob = _order(bob, address(tokB), address(tokA), 3_000 ether, 0);
-        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](2);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](2);
         trades[0] = _trade(oa, _sign(ALICE, 0, oa), false);
         trades[1] = _trade(ob, _sign(BOB, 0, ob), false);
         _settle(_prices(2e18), trades, _noInteractions());
@@ -97,21 +97,21 @@ contract QensaSettlementTest is BaseTest {
     function test_revert_limitPriceViolated() public {
         OrderLib.Order memory oa = _order(alice, address(tokA), address(tokB), 100 ether, 199.5 ether);
         OrderLib.Order memory ob = _order(bob, address(tokB), address(tokA), 200 ether, 0);
-        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](2);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](2);
         trades[0] = _trade(oa, _sign(SESSION_PK, 1, oa), false);
         trades[1] = _trade(ob, _sign(SESSION_PK, 1, ob), false);
-        vm.expectPartialRevert(QensaSettlement.LimitPriceViolated.selector);
+        vm.expectPartialRevert(QalibreSettlement.LimitPriceViolated.selector);
         _settle(_prices(2e18), trades, _noInteractions()); // 200 - 0.5% = 199 < 199.5
     }
 
     function test_revert_worseThanDirectSwap() public {
         // Alone in the batch at a bad price: the direct-price guarantee must stop it.
         OrderLib.Order memory oa = _order(alice, address(tokA), address(tokB), 100 ether, 0);
-        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](1);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](1);
         trades[0] = _trade(oa, _sign(SESSION_PK, 1, oa), true);
-        QensaSettlement.Interaction[] memory its = new QensaSettlement.Interaction[](1);
+        QalibreSettlement.Interaction[] memory its = new QalibreSettlement.Interaction[](1);
         its[0] = _interaction(address(tokA), address(tokB), 100 ether);
-        vm.expectPartialRevert(QensaSettlement.NotBetterThanDirect.selector);
+        vm.expectPartialRevert(QalibreSettlement.NotBetterThanDirect.selector);
         _settle(_prices(1.9e18), trades, its);
     }
 
@@ -122,51 +122,51 @@ contract QensaSettlementTest is BaseTest {
         excessA = 100 ether - (100 ether * 1e18) / bPerA;
         OrderLib.Order memory oa = _order(alice, address(tokA), address(tokB), 100 ether, 0);
         OrderLib.Order memory ob = _order(bob, address(tokB), address(tokA), 100 ether, 0);
-        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](2);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](2);
         trades[0] = _trade(oa, _sign(SESSION_PK, 1, oa), false);
         trades[1] = _trade(ob, _sign(SESSION_PK, 1, ob), false);
-        QensaSettlement.Interaction[] memory its = new QensaSettlement.Interaction[](1);
+        QalibreSettlement.Interaction[] memory its = new QalibreSettlement.Interaction[](1);
         its[0] = _interaction(address(tokA), address(tokB), excessA);
-        vm.expectPartialRevert(QensaSettlement.ExcessLeftover.selector);
+        vm.expectPartialRevert(QalibreSettlement.ExcessLeftover.selector);
         _settle(_prices(bPerA), trades, its);
     }
 
     function test_revert_orderCannotBeFilledTwice() public {
         OrderLib.Order memory oa = _order(alice, address(tokA), address(tokB), 100 ether, 0);
         OrderLib.Order memory ob = _order(bob, address(tokB), address(tokA), 200 ether, 0);
-        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](2);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](2);
         trades[0] = _trade(oa, _sign(SESSION_PK, 1, oa), false);
         trades[1] = _trade(ob, _sign(SESSION_PK, 1, ob), false);
         _settle(_prices(2e18), trades, _noInteractions());
-        vm.expectRevert(QensaSettlement.OrderFilled.selector);
+        vm.expectRevert(QalibreSettlement.OrderFilled.selector);
         _settle(_prices(2e18), trades, _noInteractions());
     }
 
     function test_revert_onlySolver() public {
         (address[] memory toks,) = _tokens();
-        vm.expectRevert(QensaSettlement.NotSolver.selector);
-        settlement.settle(toks, _prices(2e18), new QensaSettlement.Trade[](0), _noInteractions());
+        vm.expectRevert(QalibreSettlement.NotSolver.selector);
+        settlement.settle(toks, _prices(2e18), new QalibreSettlement.Trade[](0), _noInteractions());
     }
 
     function test_revert_unapprovedAdapter() public {
         settlement.setAdapter(address(adapter), false);
         OrderLib.Order memory oa = _order(alice, address(tokA), address(tokB), 100 ether, 0);
-        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](1);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](1);
         trades[0] = _trade(oa, _sign(SESSION_PK, 1, oa), false);
-        QensaSettlement.Interaction[] memory its = new QensaSettlement.Interaction[](1);
+        QalibreSettlement.Interaction[] memory its = new QalibreSettlement.Interaction[](1);
         its[0] = _interaction(address(tokA), address(tokB), 100 ether);
-        vm.expectRevert(QensaSettlement.NotAdapter.selector);
+        vm.expectRevert(QalibreSettlement.NotAdapter.selector);
         _settle(_prices(1.9e18), trades, its);
     }
 
     function test_revert_expiredOrder() public {
         OrderLib.Order memory oa = _order(alice, address(tokA), address(tokB), 100 ether, 0);
         OrderLib.Order memory ob = _order(bob, address(tokB), address(tokA), 200 ether, 0);
-        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](2);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](2);
         trades[0] = _trade(oa, _sign(SESSION_PK, 1, oa), false);
         trades[1] = _trade(ob, _sign(SESSION_PK, 1, ob), false);
         vm.warp(block.timestamp + 2 hours);
-        vm.expectRevert(QensaSettlement.OrderExpired.selector);
+        vm.expectRevert(QalibreSettlement.OrderExpired.selector);
         _settle(_prices(2e18), trades, _noInteractions());
     }
 
@@ -174,8 +174,8 @@ contract QensaSettlementTest is BaseTest {
         (address[] memory toks,) = _tokens();
         (toks[0], toks[1]) = (toks[1], toks[0]);
         vm.prank(solver);
-        vm.expectRevert(QensaSettlement.BadTokens.selector);
-        settlement.settle(toks, _prices(2e18), new QensaSettlement.Trade[](0), _noInteractions());
+        vm.expectRevert(QalibreSettlement.BadTokens.selector);
+        settlement.settle(toks, _prices(2e18), new QalibreSettlement.Trade[](0), _noInteractions());
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -183,12 +183,12 @@ contract QensaSettlementTest is BaseTest {
     // ---------------------------------------------------------------------------------------------
 
     function test_feeCapsAreHardLimits() public {
-        vm.expectRevert(QensaSettlement.FeeTooHigh.selector);
+        vm.expectRevert(QalibreSettlement.FeeTooHigh.selector);
         settlement.setFee(51);
-        vm.expectRevert(QensaSettlement.FeeTooHigh.selector);
+        vm.expectRevert(QalibreSettlement.FeeTooHigh.selector);
         settlement.setSurplusShare(5_001);
-        vm.expectRevert(QensaSettlement.FeeTooHigh.selector);
-        new QensaSettlement(address(this), feeRecipient, 51, 0);
+        vm.expectRevert(QalibreSettlement.FeeTooHigh.selector);
+        new QalibreSettlement(address(this), feeRecipient, 51, 0);
     }
 
     function test_onlyOwnerCanConfigure() public {
@@ -217,7 +217,7 @@ contract QensaSettlementTest is BaseTest {
 
         OrderLib.Order memory oa = _order(alice, address(tokA), address(tokB), sellA, minBuy);
         OrderLib.Order memory ob = _order(bob, address(tokB), address(tokA), sellB, 0);
-        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](2);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](2);
         trades[0] = _trade(oa, _sign(SESSION_PK, 1, oa), false);
         trades[1] = _trade(ob, _sign(SESSION_PK, 1, ob), false);
 
@@ -231,7 +231,7 @@ contract QensaSettlementTest is BaseTest {
             // The only acceptable failures: the limit price, or rounding dust above tolerance.
             bytes4 sel = bytes4(reason);
             assertTrue(
-                sel == QensaSettlement.LimitPriceViolated.selector || sel == QensaSettlement.ExcessLeftover.selector,
+                sel == QalibreSettlement.LimitPriceViolated.selector || sel == QalibreSettlement.ExcessLeftover.selector,
                 "unexpected revert"
             );
         }

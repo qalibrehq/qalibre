@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-/// @notice Pluggable owner-signature check for a Qensa account.
+/// @notice Pluggable owner-signature check for a Qalibre account.
 /// @dev This is the post-quantum upgrade slot: when QMS ships PQ signatures, an owner installs a
 ///      validator implementing the new scheme. Only the account owner can install or remove one.
 interface ISignatureValidator {

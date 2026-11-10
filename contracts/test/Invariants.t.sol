@@ -4,17 +4,17 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {BaseTest} from "./utils/Base.t.sol";
 import {MockERC20} from "./utils/Mocks.sol";
-import {QensaAccount} from "../src/QensaAccount.sol";
-import {QensaSettlement} from "../src/QensaSettlement.sol";
+import {QalibreAccount} from "../src/QalibreAccount.sol";
+import {QalibreSettlement} from "../src/QalibreSettlement.sol";
 import {OrderLib} from "../src/libraries/OrderLib.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-/// @dev The attacker holds BOTH the session key and the solver role (i.e. a fully compromised Qensa backend)
+/// @dev The attacker holds BOTH the session key and the solver role (i.e. a fully compromised Qalibre backend)
 ///      and throws random actions at a victim's account.
 contract CompromisedBackend is Test {
-    QensaAccount public immutable victim;
-    QensaAccount public immutable counterparty;
-    QensaSettlement public immutable settlement;
+    QalibreAccount public immutable victim;
+    QalibreAccount public immutable counterparty;
+    QalibreSettlement public immutable settlement;
     MockERC20 public immutable tokA;
     MockERC20 public immutable tokB;
     uint256 public immutable sessionPk;
@@ -26,9 +26,9 @@ contract CompromisedBackend is Test {
     uint256 public nonce;
 
     constructor(
-        QensaAccount v,
-        QensaAccount c,
-        QensaSettlement s,
+        QalibreAccount v,
+        QalibreAccount c,
+        QalibreSettlement s,
         MockERC20 a,
         MockERC20 b,
         uint256 pk,
@@ -64,7 +64,7 @@ contract CompromisedBackend is Test {
 
         OrderLib.Order memory ov = _order(victim, address(tokA), address(tokB), amount, 0);
         OrderLib.Order memory oc = _order(counterparty, address(tokB), address(tokA), bAmount, 0);
-        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](2);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](2);
         trades[0] = _t(ov);
         trades[1] = _t(oc);
         uint256[] memory prices = new uint256[](2);
@@ -78,7 +78,7 @@ contract CompromisedBackend is Test {
         }
         uint256 before = tokA.balanceOf(address(victim));
         vm.prank(attacker);
-        try settlement.settle(toks, prices, trades, new QensaSettlement.Interaction[](0)) {
+        try settlement.settle(toks, prices, trades, new QalibreSettlement.Interaction[](0)) {
             victimSoldToday += before - tokA.balanceOf(address(victim));
         } catch {}
     }
@@ -87,14 +87,14 @@ contract CompromisedBackend is Test {
         vm.warp(block.timestamp + bound(secs, 1, 2 days));
     }
 
-    function _order(QensaAccount a, address sell, address buy, uint256 amt, uint256 minBuy)
+    function _order(QalibreAccount a, address sell, address buy, uint256 amt, uint256 minBuy)
         internal
         returns (OrderLib.Order memory)
     {
         return OrderLib.Order(address(a), sell, buy, amt, minBuy, uint64(block.timestamp + 1 hours), ++nonce);
     }
 
-    function _t(OrderLib.Order memory o) internal view returns (QensaSettlement.Trade memory t) {
+    function _t(OrderLib.Order memory o) internal view returns (QalibreSettlement.Trade memory t) {
         (address[] memory toks,) = _tokens();
         bytes32 digest = settlement.orderDigest(o);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(sessionPk, digest);
@@ -113,23 +113,23 @@ contract CompromisedBackend is Test {
 
 contract InvariantsTest is BaseTest {
     CompromisedBackend internal handler;
-    QensaAccount internal victim;
+    QalibreAccount internal victim;
     address internal victimOwner;
 
     function setUp() public override {
         super.setUp();
         victim = _createFunded(0xA11CE, 1_000_000 ether, 0);
         victimOwner = vm.addr(0xA11CE);
-        QensaAccount counterparty = _createAccount(0xB0B, _wideSession());
+        QalibreAccount counterparty = _createAccount(0xB0B, _wideSession());
         // Worst case: the attacker is also a whitelisted solver.
         settlement.setSolver(sessionKey, true);
         handler = new CompromisedBackend(victim, counterparty, settlement, tokA, tokB, SESSION_PK, address(adapter));
         targetContract(address(handler));
     }
 
-    function _wideSession() internal view returns (QensaAccount.SessionSetup memory s) {
+    function _wideSession() internal view returns (QalibreAccount.SessionSetup memory s) {
         s = _defaultSession();
-        s.limits[1] = QensaAccount.TokenLimit(address(tokB), type(uint128).max, type(uint128).max);
+        s.limits[1] = QalibreAccount.TokenLimit(address(tokB), type(uint128).max, type(uint128).max);
     }
 
     /// The attacker never ends up holding any of the victim's tokens.

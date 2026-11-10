@@ -4,12 +4,12 @@ pragma solidity 0.8.28;
 import {Script, console2} from "forge-std/Script.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 
-import {QensaSettlement} from "../src/QensaSettlement.sol";
-import {QensaAccountFactory} from "../src/QensaAccountFactory.sol";
-import {QensaPaymaster} from "../src/QensaPaymaster.sol";
+import {QalibreSettlement} from "../src/QalibreSettlement.sol";
+import {QalibreAccountFactory} from "../src/QalibreAccountFactory.sol";
+import {QalibrePaymaster} from "../src/QalibrePaymaster.sol";
 import {QwapV2Adapter, IQwapRouter} from "../src/adapters/QwapV2Adapter.sol";
 
-/// @notice One-command deploy of the whole Qensa stack.
+/// @notice One-command deploy of the whole Qalibre stack.
 ///
 ///   forge script script/Deploy.s.sol --rpc-url qms --broadcast --slow
 ///
@@ -22,7 +22,7 @@ contract Deploy is Script {
     address constant ENTRY_POINT_V07 = 0x0000000071727De22E5E9d8BAf0edAc6f37da032;
     address constant QWAP_ROUTER = 0x93AFF45f28e5DF1b55f5AEFEfB807De843b12619;
 
-    bytes32 constant SALT = keccak256("qensa.v1");
+    bytes32 constant SALT = keccak256("qalibre.v1");
 
     function run() external {
         uint256 deployerPk = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -42,13 +42,13 @@ contract Deploy is Script {
         vm.startBroadcast(deployerPk);
 
         // Owner is the deployer (constant), fee settings go through setters so they don't change addresses.
-        QensaSettlement settlement = QensaSettlement(
-            _deploy(abi.encodePacked(type(QensaSettlement).creationCode, abi.encode(deployer, deployer, 0, 0)))
+        QalibreSettlement settlement = QalibreSettlement(
+            _deploy(abi.encodePacked(type(QalibreSettlement).creationCode, abi.encode(deployer, deployer, 0, 0)))
         );
-        QensaAccountFactory factory = QensaAccountFactory(
+        QalibreAccountFactory factory = QalibreAccountFactory(
             _deploy(
                 abi.encodePacked(
-                    type(QensaAccountFactory).creationCode, abi.encode(IEntryPoint(entryPoint), address(settlement))
+                    type(QalibreAccountFactory).creationCode, abi.encode(IEntryPoint(entryPoint), address(settlement))
                 )
             )
         );
@@ -59,10 +59,10 @@ contract Deploy is Script {
                 )
             )
         );
-        QensaPaymaster paymaster = QensaPaymaster(
+        QalibrePaymaster paymaster = QalibrePaymaster(
             payable(
                 _deploy(
-                    abi.encodePacked(type(QensaPaymaster).creationCode, abi.encode(IEntryPoint(entryPoint), sponsor, deployer))
+                    abi.encodePacked(type(QalibrePaymaster).creationCode, abi.encode(IEntryPoint(entryPoint), sponsor, deployer))
                 )
             )
         );

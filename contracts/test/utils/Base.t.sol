@@ -6,17 +6,17 @@ import {EntryPoint} from "account-abstraction/core/EntryPoint.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
-import {QensaAccount} from "../../src/QensaAccount.sol";
-import {QensaAccountFactory} from "../../src/QensaAccountFactory.sol";
-import {QensaSettlement} from "../../src/QensaSettlement.sol";
+import {QalibreAccount} from "../../src/QalibreAccount.sol";
+import {QalibreAccountFactory} from "../../src/QalibreAccountFactory.sol";
+import {QalibreSettlement} from "../../src/QalibreSettlement.sol";
 import {QwapV2Adapter, IQwapRouter} from "../../src/adapters/QwapV2Adapter.sol";
 import {OrderLib} from "../../src/libraries/OrderLib.sol";
 import {MockERC20, MockV2Router} from "./Mocks.sol";
 
 abstract contract BaseTest is Test {
     EntryPoint internal entryPoint;
-    QensaSettlement internal settlement;
-    QensaAccountFactory internal factory;
+    QalibreSettlement internal settlement;
+    QalibreAccountFactory internal factory;
     MockV2Router internal router;
     QwapV2Adapter internal adapter;
     MockERC20 internal tokA;
@@ -35,8 +35,8 @@ abstract contract BaseTest is Test {
     function setUp() public virtual {
         sessionKey = vm.addr(SESSION_PK);
         entryPoint = new EntryPoint();
-        settlement = new QensaSettlement(address(this), feeRecipient, FEE_BPS, SURPLUS_SHARE_BPS);
-        factory = new QensaAccountFactory(IEntryPoint(address(entryPoint)), address(settlement));
+        settlement = new QalibreSettlement(address(this), feeRecipient, FEE_BPS, SURPLUS_SHARE_BPS);
+        factory = new QalibreAccountFactory(IEntryPoint(address(entryPoint)), address(settlement));
         router = new MockV2Router();
         adapter = new QwapV2Adapter(IQwapRouter(address(router)), address(settlement));
         settlement.setSolver(solver, true);
@@ -53,30 +53,30 @@ abstract contract BaseTest is Test {
     // Accounts
     // ---------------------------------------------------------------------------------------------
 
-    function _defaultSession() internal view returns (QensaAccount.SessionSetup memory s) {
+    function _defaultSession() internal view returns (QalibreAccount.SessionSetup memory s) {
         s.key = sessionKey;
         s.validUntil = uint48(block.timestamp + 30 days);
         s.anyBuyToken = false;
-        s.limits = new QensaAccount.TokenLimit[](2);
-        s.limits[0] = QensaAccount.TokenLimit(address(tokA), 1_000 ether, 2_000 ether);
-        s.limits[1] = QensaAccount.TokenLimit(address(tokB), 1_000 ether, 2_000 ether);
+        s.limits = new QalibreAccount.TokenLimit[](2);
+        s.limits[0] = QalibreAccount.TokenLimit(address(tokA), 1_000 ether, 2_000 ether);
+        s.limits[1] = QalibreAccount.TokenLimit(address(tokB), 1_000 ether, 2_000 ether);
         s.buyTokens = new address[](2);
         s.buyTokens[0] = address(tokA);
         s.buyTokens[1] = address(tokB);
     }
 
-    function _createAccount(uint256 ownerPk, QensaAccount.SessionSetup memory session)
+    function _createAccount(uint256 ownerPk, QalibreAccount.SessionSetup memory session)
         internal
-        returns (QensaAccount acct)
+        returns (QalibreAccount acct)
     {
-        QensaAccountFactory.Setup memory s =
-            QensaAccountFactory.Setup({owner: vm.addr(ownerPk), salt: 0, session: session});
+        QalibreAccountFactory.Setup memory s =
+            QalibreAccountFactory.Setup({owner: vm.addr(ownerPk), salt: 0, session: session});
         bytes32 h = MessageHashUtils.toEthSignedMessageHash(factory.setupHash(s));
         (uint8 v, bytes32 r, bytes32 sg) = vm.sign(ownerPk, h);
         acct = factory.createAccount(s, abi.encodePacked(r, sg, v));
     }
 
-    function _createFunded(uint256 ownerPk, uint256 amountA, uint256 amountB) internal returns (QensaAccount acct) {
+    function _createFunded(uint256 ownerPk, uint256 amountA, uint256 amountB) internal returns (QalibreAccount acct) {
         acct = _createAccount(ownerPk, _defaultSession());
         tokA.mint(address(acct), amountA);
         tokB.mint(address(acct), amountB);
@@ -86,7 +86,7 @@ abstract contract BaseTest is Test {
     // Orders
     // ---------------------------------------------------------------------------------------------
 
-    function _order(QensaAccount acct, address sell, address buy, uint256 sellAmount, uint256 minBuy)
+    function _order(QalibreAccount acct, address sell, address buy, uint256 sellAmount, uint256 minBuy)
         internal
         view
         returns (OrderLib.Order memory)
@@ -111,7 +111,7 @@ abstract contract BaseTest is Test {
     function _trade(OrderLib.Order memory o, bytes memory sig, bool withRef)
         internal
         view
-        returns (QensaSettlement.Trade memory t)
+        returns (QalibreSettlement.Trade memory t)
     {
         (address[] memory toks,) = _tokens();
         t.order = o;
@@ -145,7 +145,7 @@ abstract contract BaseTest is Test {
     function _interaction(address tokenIn, address tokenOut, uint256 amountIn)
         internal
         view
-        returns (QensaSettlement.Interaction memory it)
+        returns (QalibreSettlement.Interaction memory it)
     {
         (address[] memory toks,) = _tokens();
         it.adapter = address(adapter);
@@ -157,15 +157,15 @@ abstract contract BaseTest is Test {
 
     function _settle(
         uint256[] memory prices,
-        QensaSettlement.Trade[] memory trades,
-        QensaSettlement.Interaction[] memory its
+        QalibreSettlement.Trade[] memory trades,
+        QalibreSettlement.Interaction[] memory its
     ) internal {
         (address[] memory toks,) = _tokens();
         vm.prank(solver);
         settlement.settle(toks, prices, trades, its);
     }
 
-    function _noInteractions() internal pure returns (QensaSettlement.Interaction[] memory) {
-        return new QensaSettlement.Interaction[](0);
+    function _noInteractions() internal pure returns (QalibreSettlement.Interaction[] memory) {
+        return new QalibreSettlement.Interaction[](0);
     }
 }
