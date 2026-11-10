@@ -93,11 +93,11 @@ export function App() {
 
   return (
     <>
-      {route.name === 'home' && <Home me={me} nav={nav} />}
-      {route.name === 'trade' && <Trade me={me} nav={nav} side={route.side} toast={toast} />}
+      {route.name === 'home' && <Home me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
+      {route.name === 'trade' && <Trade me={me} nav={nav} side={route.side} toast={toast} refresh={() => void refresh()} />}
       {route.name === 'receipt' && <Receipt orderId={route.orderId} nav={nav} />}
       {route.name === 'activity' && <Activity nav={nav} />}
-      {route.name === 'control' && <Control me={me} nav={nav} toast={toast} />}
+      {route.name === 'control' && <Control me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
       {toastMsg && <div className="toast" role="alert">{toastMsg}</div>}
     </>
   );

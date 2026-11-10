@@ -3,6 +3,7 @@ import { api, usd, type BatchStatus, type Me } from '../api';
 import { Wordmark } from '../ui/Brand';
 import { Subdial } from '../ui/Subdial';
 import type { Nav } from '../App';
+import { TestFundsButton } from '../ui/TestFunds';
 
 function useCountUp(target: number, ms = 900) {
   const [v, setV] = useState(0);
@@ -41,7 +42,7 @@ export function useBatch() {
   return { ...b, leftMs: left, progress: 1 - left / b.intervalMs };
 }
 
-export function Home({ me, nav }: { me: Me; nav: Nav }) {
+export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m: string) => void; refresh: () => void }) {
   const total = useCountUp(me.totalUsd ?? 0);
   const batch = useBatch();
   const [whole, cents] = usd(total).split('.');
@@ -97,6 +98,7 @@ export function Home({ me, nav }: { me: Me; nav: Nav }) {
               <p className="num" style={{ margin: 0, fontSize: 15, fontWeight: 500 }}>${usd(h.valueUsd)}</p>
             </div>
           ))}
+          <TestFundsButton onDone={() => setTimeout(refresh, 1500)} toast={toast} />
         </div>
       </div>
 

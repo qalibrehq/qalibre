@@ -11,6 +11,7 @@ export interface UserRow {
   session_key_enc: string | null;
   pending_setup: string | null;
   dripped: number;
+  last_drip_at: number;
   created_at: number;
 }
 
@@ -88,7 +89,7 @@ export function openDb(path: string) {
     );
   `);
 
-  for (const ddl of ["ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER']) {
+  for (const ddl of ['ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER']) {
     try {
       db.exec(ddl);
     } catch {
@@ -111,7 +112,7 @@ export function openDb(path: string) {
       db.prepare('UPDATE users SET account = ?, pending_setup = NULL WHERE tg_id = ?').run(account, tgId);
     },
     markDripped(tgId: number) {
-      db.prepare('UPDATE users SET dripped = 1 WHERE tg_id = ?').run(tgId);
+      db.prepare('UPDATE users SET dripped = 1, last_drip_at = ? WHERE tg_id = ?').run(now(), tgId);
     },
     userByAccount(account: string): UserRow | undefined {
       return db.prepare('SELECT * FROM users WHERE lower(account) = lower(?)').get(account) as UserRow | undefined;

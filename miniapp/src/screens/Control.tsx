@@ -4,6 +4,7 @@ import { haptic, openLink } from '../tg';
 import { exportKey, loadVault, WrongPin } from '../wallet';
 import { Back, Wordmark } from '../ui/Brand';
 import { Keypad } from '../ui/Keypad';
+import { TestFundsButton } from '../ui/TestFunds';
 import type { Nav } from '../App';
 
 async function copy(text: string): Promise<boolean> {
@@ -24,7 +25,7 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
-export function Control({ me, nav, toast }: { me: Me; nav: Nav; toast: (m: string) => void }) {
+export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m: string) => void; refresh: () => void }) {
   const [backup, setBackup] = useState<'closed' | 'pin' | 'shown'>('closed');
   const [pin, setPin] = useState('');
   const [key, setKey] = useState<string | null>(null);
@@ -133,8 +134,9 @@ export function Control({ me, nav, toast }: { me: Me; nav: Nav; toast: (m: strin
       </div>
 
       <div className="rows strong" style={{ marginTop: 24 }}>
-        <div className="row"><span>Receive</span><span style={{ color: 'var(--ink)', textAlign: 'right' }}>Send QMS-testnet WQMS or USDC to the address above</span></div>
-        <button className="row" onClick={() => openLink('https://faucet.testnet.qms.finance')} style={{ border: 0, borderBottom: '1px solid var(--rule)', background: 'transparent', width: '100%', cursor: 'pointer' }}><span>Free test QMS</span><span className="green" style={{ fontWeight: 500 }}>Open faucet</span></button>
+        <TestFundsButton onDone={() => setTimeout(refresh, 1500)} toast={toast} />
+        <div className="row"><span>Receive</span><span style={{ color: 'var(--ink)', textAlign: 'right' }}>Send WQMS or USDC on QMS testnet to the address above</span></div>
+        <button className="row" onClick={() => openLink('https://faucet.testnet.qms.finance')} style={{ border: 0, borderBottom: '1px solid var(--rule)', background: 'transparent', width: '100%', cursor: 'pointer' }}><span>QMS faucet</span><span className="green" style={{ fontWeight: 500 }}>Open</span></button>
         <button className="row" onClick={startBackup} style={{ border: 0, borderBottom: '1px solid var(--rule)', background: 'transparent', width: '100%', cursor: 'pointer' }}><span>Wallet key</span><span className="green" style={{ fontWeight: 500 }}>Back up</span></button>
       </div>
 

@@ -147,6 +147,9 @@ export function startApi(db: Db, svc: Service) {
         if (typeof body.signature !== 'string' || !isHex(body.signature) || body.signature.length !== 132) throw new UserError('Invalid signature.');
         return send(res, 200, await svc.completeRegistration(user.id, body.signature as Hex), origin);
       }
+      if (req.method === 'POST' && url.pathname === '/api/test-funds') {
+        return send(res, 200, await svc.requestTestFunds(user.id), origin);
+      }
       if (req.method === 'GET' && url.pathname === '/api/quote') {
         const sell = url.searchParams.get('sell') ?? '';
         const buy = url.searchParams.get('buy') ?? '';

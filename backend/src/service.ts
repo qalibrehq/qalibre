@@ -107,22 +107,54 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
     return { account };
   }
 
-  /** Testnet only: send a little WQMS and USDC so a new user can trade immediately. */
+  /** Testnet only: send a little WQMS and USDC so a user can trade. On signup, and once a day on request. */
+  async function sendTestFunds(account: Address): Promise<{ wqms: bigint; usdc: bigint }> {
+    const w = walletClient(relayer);
+    const sent = { wqms: 0n, usdc: 0n };
+    for (const [token, amount, key] of [[TOKENS.WQMS, config.drip.wqms, 'wqms'], [TOKENS.USDC, config.drip.usdc, 'usdc']] as const) {
+      const bal = await client.readContract({ address: token, abi: erc20Abi, functionName: 'balanceOf', args: [relayer.address] });
+      if (bal < amount) continue;
+      const h = await w.writeContract({ address: token, abi: erc20Abi, functionName: 'transfer', args: [account, amount], account: relayer, chain: w.chain });
+      await waitForConfirmations(client, h, 1n);
+      sent[key] = amount;
+    }
+    return sent;
+  }
+
   async function drip(tgId: number, account: Address) {
     const u = db.getUser(tgId);
     if (!u || u.dripped) return;
     try {
-      const w = walletClient(relayer);
-      for (const [token, amount] of [[TOKENS.WQMS, config.drip.wqms], [TOKENS.USDC, config.drip.usdc]] as const) {
-        const bal = await client.readContract({ address: token, abi: erc20Abi, functionName: 'balanceOf', args: [relayer.address] });
-        if (bal < amount) continue;
-        const h = await w.writeContract({ address: token, abi: erc20Abi, functionName: 'transfer', args: [account, amount], account: relayer, chain: w.chain });
-        await waitForConfirmations(client, h, 1n);
-      }
+      const sent = await sendTestFunds(account);
       db.markDripped(tgId);
-      await notify(tgId, '<b>Your wallet is ready.</b>\nWe added a little test QMS and USDC so you can make your first trade right away.');
+      if (sent.wqms > 0n || sent.usdc > 0n) {
+        await notify(tgId, '<b>Your wallet is ready.</b>\nWe added a little test QMS and USDC so you can make your first trade right away.');
+      } else {
+        await notify(tgId, '<b>Your wallet is ready.</b>\nOur test-fund reserve is being refilled. Tap Get test funds in the app a little later.');
+      }
     } catch (e) {
       console.error('drip failed', (e as Error).message);
+    }
+  }
+
+  const dripInFlight = new Set<number>();
+  async function requestTestFunds(tgId: number) {
+    const u = db.getUser(tgId);
+    if (!u?.account) throw new UserError('Create your wallet first.');
+    const wait = u.last_drip_at + 86_400 - Math.floor(Date.now() / 1000);
+    if (wait > 0) {
+      const h = Math.ceil(wait / 3600);
+      throw new UserError(`You can request test funds again in about ${h} ${h === 1 ? 'hour' : 'hours'}.`);
+    }
+    if (dripInFlight.has(tgId)) throw new UserError('Your test funds are already on their way.');
+    dripInFlight.add(tgId);
+    try {
+      const sent = await sendTestFunds(u.account as Address);
+      if (sent.wqms === 0n && sent.usdc === 0n) throw new UserError('Our test-fund reserve is being refilled. Please try again later.');
+      db.markDripped(tgId);
+      return { wqms: sent.wqms.toString(), usdc: sent.usdc.toString() };
+    } finally {
+      dripInFlight.delete(tgId);
     }
   }
 
@@ -376,6 +408,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
       savedUsd,
       trades: filled.length,
       session: { active, validUntil: Number(validUntil) },
+      testFundsAt: user.last_drip_at + 86_400,
     };
   }
 
@@ -383,7 +416,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
     return { nextBatchInMs: msToNextBatch(), waiting: db.countPending(), batch: db.lastBatchId() + 1, intervalMs: config.bestWindowMs, lastRunAt };
   }
 
-  return { prepareRegistration, completeRegistration, quote, placeOrder, runBatch, portfolio, batchStatus, fillMessage, deployment: dep };
+  return { prepareRegistration, completeRegistration, quote, placeOrder, runBatch, portfolio, batchStatus, fillMessage, requestTestFunds, deployment: dep };
 }
 
 export function trimUnits(v: bigint, decimals: number, maxFrac = 6): string {

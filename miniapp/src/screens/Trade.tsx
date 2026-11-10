@@ -4,10 +4,11 @@ import { haptic } from '../tg';
 import { Back } from '../ui/Brand';
 import { applyKey, Keypad } from '../ui/Keypad';
 import type { Nav } from '../App';
+import { TestFundsButton } from '../ui/TestFunds';
 
 type Phase = 'idle' | 'placing' | 'matching' | 'filled' | 'expired';
 
-export function Trade({ me, nav, side: initialSide, toast }: { me: Me; nav: Nav; side: 'buy' | 'sell'; toast: (m: string) => void }) {
+export function Trade({ me, nav, side: initialSide, toast, refresh }: { me: Me; nav: Nav; side: 'buy' | 'sell'; toast: (m: string) => void; refresh: () => void }) {
   const [side, setSide] = useState<'buy' | 'sell'>(initialSide);
   const sell = side === 'buy' ? TOKENS.USDC : TOKENS.QMS;
   const buy = side === 'buy' ? TOKENS.QMS : TOKENS.USDC;
@@ -129,6 +130,7 @@ export function Trade({ me, nav, side: initialSide, toast }: { me: Me; nav: Nav;
         <div className="row"><span>Likely, when matched</span><span className="num green" style={{ fontWeight: 600 }}>{quote ? `${fromUnits(quote.likely, buy.decimals)} ${buy.symbol}` : '–'}</span></div>
       </div>
       <p style={{ minHeight: 20, margin: '10px 0 0', fontSize: 13, color: 'var(--danger)' }}>{error ?? ''}</p>
+      {phase === 'idle' && balance === 0 && <TestFundsButton variant="button" onDone={() => setTimeout(refresh, 1500)} toast={toast} />}
 
       <div className="spacer">
         {phase === 'idle' && (

@@ -39,6 +39,7 @@ export interface Me {
   trades?: number;
   session?: { active: boolean; validUntil: number };
   unwrappedQms?: number;
+  testFundsAt?: number;
 }
 
 export interface BatchStatus { nextBatchInMs: number; waiting: number; batch: number; intervalMs: number; lastRunAt: number }
@@ -69,6 +70,7 @@ export const api = {
   quote: (sell: string, buy: string, amount: bigint) => call<Quote>(`/api/quote?sell=${sell}&buy=${buy}&amount=${amount}`),
   order: (sell: string, buy: string, amount: bigint, mode: 'instant' | 'best') => call<{ id: string; minOut: string; likely: string; direct: string; nextBatchInMs: number }>('/api/orders', { method: 'POST', body: JSON.stringify({ sell, buy, amount: amount.toString(), mode }) }),
   orders: () => call<{ orders: OrderRow[] }>('/api/orders'),
+  testFunds: () => call<{ wqms: string; usdc: string }>('/api/test-funds', { method: 'POST' }),
   orderById: (id: string) => call<OrderRow>(`/api/orders/${id}`),
 };
 
