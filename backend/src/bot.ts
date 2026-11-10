@@ -18,14 +18,26 @@ export async function setupBot(bot: Bot) {
   await bot.call('setMyCommands', {
     commands: [
       { command: 'start', description: 'Open Qalibre' },
-      { command: 'balance', description: 'Your balance and savings' },
-      { command: 'help', description: 'How Qalibre works' },
+      { command: 'balance', description: 'Balance and savings' },
+      { command: 'how', description: 'How a batch works' },
+      { command: 'fees', description: 'What you pay, and when' },
+      { command: 'security', description: 'Who controls your funds' },
     ],
   });
+  // Shown before the user presses Start (max 512 characters).
   await bot.call('setMyDescription', {
-    description: 'Qalibre matches buyers with sellers before going to the exchange, so you never get less than swapping directly. No saving, no fee. Your wallet, your keys.',
+    description: [
+      'Qalibre is precision trading on QMS.',
+      '',
+      'Every few seconds, orders are gathered into a single batch. Buyers are matched with sellers first, at one fair price for everyone. Only the remainder goes to the exchange.',
+      '',
+      'The contract guarantees you never receive less than a direct swap. We earn only when we improve your price.',
+      '',
+      'Your wallet stays yours. Only you can withdraw.',
+    ].join('\n'),
   });
-  await bot.call('setMyShortDescription', { short_description: 'Trade together. Pay less. Best execution on QMS.' });
+  // Shown on the bot's profile and in shares (max 120 characters).
+  await bot.call('setMyShortDescription', { short_description: 'Precision trading on QMS. Matched first, never worse than a direct swap. Your keys, always.' });
   if (config.miniAppUrl) {
     await bot.call('setChatMenuButton', { menu_button: { type: 'web_app', text: 'Open', web_app: { url: config.miniAppUrl } } });
   }
@@ -50,10 +62,12 @@ export function startBot(bot: Bot, db: Db, svc: Service) {
           `<b>Welcome to Qalibre${name}.</b>`,
           '',
           'Trade together. Pay less.',
-          'We match buyers with sellers before going to the exchange, so you never get less than swapping directly on QWAP. If we don\'t save you money, we don\'t charge you.',
           '',
-          'Your wallet is yours: only you can withdraw.',
-          config.miniAppUrl ? '' : '\nThe app opens to testers very soon.',
+          'Your order joins a batch with other traders. Buyers are matched with sellers first, at one fair price, and only the remainder goes to QWAP. You never receive less than a direct swap, and if we don\'t improve your price, there is no fee.',
+          '',
+          'Your wallet stays yours. Qalibre can trade only within the limits you set, and only you can withdraw.',
+          '',
+          config.miniAppUrl ? 'Open Qalibre to create your wallet. It takes about thirty seconds.' : 'The app opens to testers shortly. We will message you here.',
         ].join('\n'),
         openButton(),
       );
@@ -62,30 +76,66 @@ export function startBot(bot: Bot, db: Db, svc: Service) {
     if (cmd === '/balance') {
       const p = await svc.portfolio(id);
       if (!p.registered) {
-        await bot.sendMessage(id, 'You don\'t have a Qalibre wallet yet. Open the app to create one in about 30 seconds.', openButton());
+        await bot.sendMessage(id, 'You don\'t have a Qalibre wallet yet. Creating one takes about thirty seconds.', openButton());
         return;
       }
-      const lines = p.holdings.map((h) => `${h.symbol.padEnd(5)} ${h.amount.toFixed(h.symbol === 'USDC' ? 2 : 4)}   $${h.valueUsd.toFixed(2)}`);
+      const lines = p.holdings.map((h) => `${h.symbol.padEnd(6)}${h.amount.toFixed(h.symbol === 'USDC' ? 2 : 4).padStart(12)}${('$' + h.valueUsd.toFixed(2)).padStart(12)}`);
       await bot.sendMessage(
         id,
-        [`<b>Balance $${p.totalUsd.toFixed(2)}</b>`, `<pre>${lines.join('\n')}</pre>`, p.savedUsd > 0 ? `Saved $${p.savedUsd.toFixed(2)} across ${p.trades} trades versus swapping directly.` : ''].join('\n'),
+        [
+          `<b>$${p.totalUsd.toFixed(2)}</b>`,
+          `<pre>${lines.join('\n')}</pre>`,
+          p.trades > 0 ? `You have saved <b>$${p.savedUsd.toFixed(2)}</b> across ${p.trades} ${p.trades === 1 ? 'trade' : 'trades'}, compared with swapping directly.` : 'Your first trade is one tap away.',
+        ].join('\n'),
         openButton(),
       );
       return;
     }
-    if (cmd === '/help') {
+    if (cmd === '/how' || cmd === '/help') {
       await bot.sendMessage(
         id,
         [
-          '<b>How Qalibre works</b>',
-          '1. Your order joins a batch with other traders, every few seconds.',
-          '2. Buyers and sellers are matched with each other first, at one fair price for everyone.',
-          '3. Only what is left over goes to the exchange (QWAP).',
-          '4. The contract guarantees you never get less than swapping directly.',
+          '<b>How a batch works</b>',
           '',
-          'Fee: 20% of what we save you, never more than 0.2%. No saving, no fee.',
+          '1. Every few seconds, Qalibre gathers everyone\'s orders into one batch.',
+          '2. Buyers are matched with sellers first. Matched trades skip the exchange fee and its price impact.',
+          '3. Everyone in the batch trades at the same price. No one is first in line.',
+          '4. Only the unmatched remainder is sent to QWAP.',
+          '5. Before anything settles, the contract checks that you receive at least what a direct swap would pay. If not, nothing happens.',
+          '',
+          'Choosing which orders clear together is an optimization problem, the kind QMS miners are built to solve.',
         ].join('\n'),
         openButton(),
+      );
+      return;
+    }
+    if (cmd === '/fees') {
+      await bot.sendMessage(
+        id,
+        [
+          '<b>What you pay</b>',
+          '',
+          'Qalibre takes 20% of the improvement it gets you over a direct swap, and never more than 0.2% of the trade.',
+          '',
+          'If there is no improvement, there is no fee. You pay only QWAP\'s usual 0.3% on the part that goes to QWAP, exactly as if you had swapped there yourself.',
+          '',
+          'Network fees are on us.',
+        ].join('\n'),
+      );
+      return;
+    }
+    if (cmd === '/security') {
+      await bot.sendMessage(
+        id,
+        [
+          '<b>Who controls your funds</b>',
+          '',
+          'You do. Your wallet is a smart account owned by a key created on your own device. Qalibre never sees it.',
+          '',
+          'Qalibre holds a limited trading permission. It can only place trades into your own wallet, within the per-trade and daily limits you set, and it expires. It cannot withdraw or send your funds anywhere.',
+          '',
+          'You can turn the permission off at any time, and you can withdraw without Qalibre. Every rule is enforced by verified contracts on the QMS Explorer.',
+        ].join('\n'),
       );
     }
   }

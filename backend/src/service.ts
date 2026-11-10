@@ -120,7 +120,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
         await waitForConfirmations(client, h, 1n);
       }
       db.markDripped(tgId);
-      await notify(tgId, 'Your Qalibre wallet is ready, and we added some <b>test QMS and USDC</b> so you can try your first trade.');
+      await notify(tgId, '<b>Your wallet is ready.</b>\nWe added a little test QMS and USDC so you can make your first trade right away.');
     } catch (e) {
       console.error('drip failed', (e as Error).message);
     }
@@ -246,7 +246,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
       for (const o of db.pendingOrders()) {
         if (o.valid_to < now + 20) {
           db.markStatus(o.id, 'expired', 'Not filled in time. Nothing was traded.');
-          await notify(o.tg_id, 'Your order expired before it could be filled at a fair price. <b>Nothing was traded</b>, and your funds are untouched.');
+          await notify(o.tg_id, '<b>Order not filled.</b>\nWe couldn\'t fill it within your price limit in time, so nothing was traded. Your balance is unchanged.');
         }
       }
       const groups = new Map<string, OrderRow[]>();
@@ -300,9 +300,11 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
     const pct = direct > 0n ? Number(((got - direct) * 1_000_000n) / direct) / 10_000 : 0;
     const fmt = (v: bigint) => trimUnits(v, buy.decimals);
     return [
-      `<b>Order filled: +${fmt(got)} ${buy.symbol}</b>`,
-      pct > 0 ? `${pct.toFixed(2)}% more than swapping directly on QWAP (${fmt(direct)}).` : `Same price as swapping directly on QWAP.`,
-      `<a href="https://testnet.qmsscan.io/tx/${o.tx_hash}">Verify on QMS Explorer</a>`,
+      `<b>Filled. +${fmt(got)} ${buy.symbol}</b>`,
+      pct > 0
+        ? `${pct.toFixed(2)}% more than a direct swap on QWAP, which would have paid ${fmt(direct)}.`
+        : `The same as a direct swap on QWAP, with no Qalibre fee.`,
+      `<a href="https://testnet.qmsscan.io/tx/${o.tx_hash}">View the settlement on QMS Explorer</a>`,
     ].join('\n');
   }
 
