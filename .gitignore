@@ -1,0 +1,11 @@
+# secrets
+.env
+.env.*
+!.env.example
+*.key
+# build
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+node_modules/
+dist/
