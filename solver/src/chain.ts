@@ -138,13 +138,13 @@ export async function readReserves(client: PublicClient, router: Address, tokenA
 export const CONFIRMATIONS = BigInt(process.env.CONFIRMATIONS ?? '3');
 
 export async function waitForConfirmations(client: PublicClient, hash: Hex, confirmations = CONFIRMATIONS) {
-  const receipt = await client.waitForTransactionReceipt({ hash, timeout: 180_000, pollingInterval: 2_000 });
+  const receipt = await client.waitForTransactionReceipt({ hash, timeout: 180_000, pollingInterval: 700 });
   if (receipt.status !== 'success') throw new Error(`transaction reverted: ${hash}`);
   const target = receipt.blockNumber + confirmations - 1n;
   for (;;) {
     const head = await client.getBlockNumber();
     if (head >= target) break;
-    await new Promise((r) => setTimeout(r, 3_000));
+    await new Promise((r) => setTimeout(r, 1_500));
   }
   // Re-check the receipt is still canonical after waiting (probabilistic block times can reorg).
   const again = await client.getTransactionReceipt({ hash });

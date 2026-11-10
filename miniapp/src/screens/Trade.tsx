@@ -16,6 +16,31 @@ export function Trade({ me, nav, side: initialSide, toast }: { me: Me; nav: Nav;
   const [phase, setPhase] = useState<Phase>('idle');
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'instant' | 'best'>(() => {
+    try {
+      return localStorage.getItem('qalibre_mode') === 'best' ? 'best' : 'instant';
+    } catch {
+      return 'instant';
+    }
+  });
+  const [startedAt, setStartedAt] = useState(0);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (phase !== 'placing' && phase !== 'matching') return;
+    const t = setInterval(() => setTick((x) => x + 1), 250);
+    return () => clearInterval(t);
+  }, [phase]);
+  const elapsed = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
+  void tick;
+  function chooseMode(m: 'instant' | 'best') {
+    haptic.select();
+    setMode(m);
+    try {
+      localStorage.setItem('qalibre_mode', m);
+    } catch {
+      /* ignore */
+    }
+  }
   const units = toUnits(amount, sell.decimals);
   const balance = me.holdings?.find((h) => h.symbol === sell.symbol)?.amount ?? 0;
 
@@ -57,9 +82,10 @@ export function Trade({ me, nav, side: initialSide, toast }: { me: Me; nav: Nav;
     if (units <= 0n) return;
     haptic.tap();
     setPhase('placing');
+    setStartedAt(Date.now());
     setError(null);
     try {
-      const r = await api.order(sell.address, buy.address, units);
+      const r = await api.order(sell.address, buy.address, units, mode);
       setPhase('matching');
       follow(r.id);
     } catch (e) {
@@ -107,6 +133,17 @@ export function Trade({ me, nav, side: initialSide, toast }: { me: Me; nav: Nav;
       <div className="spacer">
         {phase === 'idle' && (
           <>
+            <div role="radiogroup" aria-label="Execution" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
+              {([
+                ['instant', 'Instant', 'Next block, about 10 s'],
+                ['best', 'Best price', 'Waits up to 5 s for a match'],
+              ] as const).map(([m, title, sub]) => (
+                <button key={m} role="radio" aria-checked={mode === m} onClick={() => chooseMode(m)} style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 10, border: mode === m ? '1.5px solid var(--ink)' : '1px solid var(--rule-strong)', background: mode === m ? 'var(--white)' : 'transparent', cursor: 'pointer' }}>
+                  <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>{title}</span>
+                  <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>{sub}</span>
+                </button>
+              ))}
+            </div>
             <Keypad onKey={(k) => setAmount((a) => applyKey(a, k, sell.symbol === 'USDC' ? 2 : 4))} />
             <button className="btn btn-green" style={{ marginTop: 14 }} disabled={units <= 0n || !quote} onClick={place}>
               {side === 'buy' ? 'Buy QMS' : 'Sell QMS'}
@@ -125,10 +162,17 @@ export function Trade({ me, nav, side: initialSide, toast }: { me: Me; nav: Nav;
               <g className="jewel-in" style={{ animationDelay: '0.9s' }}><circle cx="196" cy="48" r="6" fill="var(--jewel)" /><circle cx="196" cy="48" r="2" fill="var(--paper)" /></g>
             </svg>
             <div>
-              <p style={{ margin: 0, fontSize: 18, fontWeight: 600, letterSpacing: '-0.02em' }}>{phase === 'placing' ? 'Placing your order' : 'Matching with other traders'}</p>
-              <p className="muted" style={{ margin: '6px 0 0', fontSize: 14, lineHeight: 1.5 }}>
-                {phase === 'placing' ? 'Checking your limits and signing within them.' : 'Your order joins the next batch. Only the unmatched part goes to QWAP.'}
+              <p style={{ margin: 0, fontSize: 18, fontWeight: 600, letterSpacing: '-0.02em' }}>
+                {phase === 'placing' ? 'Placing your order' : mode === 'instant' ? 'Settling in the next block' : 'Matching with other traders'}
               </p>
+              <p className="muted" style={{ margin: '6px 0 0', fontSize: 14, lineHeight: 1.5 }}>
+                {phase === 'placing'
+                  ? 'Checking your limits and signing within them.'
+                  : mode === 'instant'
+                    ? 'Matched with anyone already waiting. The rest goes straight to QWAP.'
+                    : 'Waiting a few seconds for traders on the other side. Only the unmatched part goes to QWAP.'}
+              </p>
+              <p className="mono muted num" style={{ margin: '14px 0 0', fontSize: 12 }}>{elapsed} s</p>
             </div>
           </div>
         )}
@@ -139,6 +183,7 @@ export function Trade({ me, nav, side: initialSide, toast }: { me: Me; nav: Nav;
               <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="21" fill="var(--green)" /><path d="M14 22.5 L19.5 28 L30 17" fill="none" stroke="var(--paper)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
               <p className="num" style={{ margin: 0, fontSize: 32, fontWeight: 600, letterSpacing: '-0.04em' }}>+{fromUnits(order.buy_amount ?? '0', buy.decimals)} {buy.symbol}</p>
               <p className="green" style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{improvement(order)}</p>
+              <p className="mono muted" style={{ margin: 0, fontSize: 12 }}>Filled in {elapsed} s</p>
             </div>
             <button className="btn btn-ink" onClick={() => nav('receipt', { orderId: order.id })}>View receipt</button>
             <button className="btn" style={{ marginTop: 6, height: 40, background: 'transparent', color: 'var(--graphite)', fontSize: 14, fontWeight: 500 }} onClick={() => { setPhase('idle'); setAmount('0'); setOrder(null); }}>New trade</button>

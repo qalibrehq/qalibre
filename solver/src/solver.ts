@@ -122,7 +122,7 @@ export async function planBatch(
 }
 
 /** Simulate against the current chain state, then submit and wait for confirmations. */
-export async function executeBatch(client: PublicClient, dep: Deployment, solver: LocalAccount, plan: BatchPlan): Promise<BatchResult> {
+export async function executeBatch(client: PublicClient, dep: Deployment, solver: LocalAccount, plan: BatchPlan, confirmations?: bigint): Promise<BatchResult> {
   const { request } = await client.simulateContract({
     address: dep.settlement,
     abi: QalibreSettlementAbi,
@@ -131,7 +131,7 @@ export async function executeBatch(client: PublicClient, dep: Deployment, solver
     account: solver,
   });
   const hash = await walletClient(solver).writeContract(request as never);
-  const receipt = await waitForConfirmations(client, hash);
+  const receipt = await waitForConfirmations(client, hash, confirmations);
   const receipts: BatchResult['receipts'] = [];
   for (const log of receipt.logs) {
     if (log.address.toLowerCase() !== dep.settlement.toLowerCase()) continue;

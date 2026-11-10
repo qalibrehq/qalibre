@@ -38,9 +38,10 @@ export interface Me {
   savedUsd?: number;
   trades?: number;
   session?: { active: boolean; validUntil: number };
+  unwrappedQms?: number;
 }
 
-export interface BatchStatus { nextBatchInMs: number; waiting: number; batch: number; intervalMs: number }
+export interface BatchStatus { nextBatchInMs: number; waiting: number; batch: number; intervalMs: number; lastRunAt: number }
 export interface Quote { direct: string; minOut: string; likely: string; waiting: number }
 export interface OrderRow {
   id: string;
@@ -66,7 +67,7 @@ export const api = {
   prepare: (owner: string) => call<{ setupHash: `0x${string}`; account: string; limits: { token: string; perTrade: string; perDay: string }[]; validUntil: number }>('/api/register/prepare', { method: 'POST', body: JSON.stringify({ owner }) }),
   complete: (signature: string) => call<{ account: string }>('/api/register/complete', { method: 'POST', body: JSON.stringify({ signature }) }),
   quote: (sell: string, buy: string, amount: bigint) => call<Quote>(`/api/quote?sell=${sell}&buy=${buy}&amount=${amount}`),
-  order: (sell: string, buy: string, amount: bigint) => call<{ id: string; minOut: string; likely: string; direct: string; nextBatchInMs: number }>('/api/orders', { method: 'POST', body: JSON.stringify({ sell, buy, amount: amount.toString() }) }),
+  order: (sell: string, buy: string, amount: bigint, mode: 'instant' | 'best') => call<{ id: string; minOut: string; likely: string; direct: string; nextBatchInMs: number }>('/api/orders', { method: 'POST', body: JSON.stringify({ sell, buy, amount: amount.toString(), mode }) }),
   orders: () => call<{ orders: OrderRow[] }>('/api/orders'),
   orderById: (id: string) => call<OrderRow>(`/api/orders/${id}`),
 };

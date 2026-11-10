@@ -156,7 +156,8 @@ export function startApi(db: Db, svc: Service) {
       if (req.method === 'POST' && url.pathname === '/api/orders') {
         const body = await readJson(req);
         if (typeof body.sell !== 'string' || !isAddress(body.sell) || typeof body.buy !== 'string' || !isAddress(body.buy)) throw new UserError('Invalid tokens.');
-        return send(res, 200, await svc.placeOrder(user.id, body.sell as Address, body.buy as Address, parseAmount(body.amount)), origin);
+        const mode = body.mode === 'instant' ? 'instant' : 'best';
+        return send(res, 200, await svc.placeOrder(user.id, body.sell as Address, body.buy as Address, parseAmount(body.amount), mode), origin);
       }
       if (req.method === 'GET' && url.pathname === '/api/orders') {
         return send(res, 200, { orders: db.userOrders(user.id).map(({ signature: _s, nonce: _n, ...o }) => o) }, origin);

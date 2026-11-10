@@ -165,7 +165,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
     return feeCache;
   }
 
-  async function placeOrder(tgId: number, sellToken: Address, buyToken: Address, sellAmount: bigint) {
+  async function placeOrder(tgId: number, sellToken: Address, buyToken: Address, sellAmount: bigint, mode: 'instant' | 'best' = 'best') {
     const user = db.getUser(tgId);
     if (!user?.account || !user.session_key_enc) throw new UserError('Create your wallet first.');
     checkPair(sellToken, buyToken);
@@ -210,16 +210,26 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
       valid_to: Number(order.validTo),
       nonce: order.nonce.toString(),
       signature,
+      mode,
     });
-    return { id, minOut: q.minOut, likely: q.likely, direct: q.direct, nextBatchInMs: msToNextBatch() };
+    void runBatch();
+    return { id, minOut: q.minOut, likely: q.likely, direct: q.direct, nextBatchInMs: mode === 'instant' ? 0 : msToNextBatch() };
   }
 
   // ---------------------------------------------------------------------------------------------
   // Batch engine
   // ---------------------------------------------------------------------------------------------
-  let lastRun = Date.now();
   let running = false;
-  const msToNextBatch = () => Math.max(0, config.batchIntervalMs - (Date.now() - lastRun));
+  let lastRunAt = 0;
+  const pairKey = (o: { sell_token: string; buy_token: string }) => [o.sell_token.toLowerCase(), o.buy_token.toLowerCase()].sort().join('/');
+
+  /** How long until the oldest waiting order is guaranteed to run (0 when something can run now). */
+  function msToNextBatch(): number {
+    const pending = db.pendingOrders();
+    if (pending.length === 0) return 0;
+    const oldest = Math.min(...pending.map((o) => o.created_ms ?? o.created_at * 1000));
+    return Math.max(0, config.bestWindowMs - (Date.now() - oldest));
+  }
 
   function toSigned(o: OrderRow): SignedOrder {
     return {
@@ -237,25 +247,37 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
     };
   }
 
+  /**
+   * A pair is ready to clear when any of these is true:
+   *  - an order asked for Instant execution
+   *  - traders on both sides are waiting (a match is available right now)
+   *  - the oldest Best-price order has waited its full window
+   */
+  function ready(rows: OrderRow[]): boolean {
+    if (rows.some((o) => o.mode === 'instant')) return true;
+    const sides = new Set(rows.map((o) => o.sell_token.toLowerCase()));
+    if (sides.size > 1) return true;
+    const oldest = Math.min(...rows.map((o) => o.created_ms ?? o.created_at * 1000));
+    return Date.now() - oldest >= config.bestWindowMs;
+  }
+
   async function runBatch() {
     if (running) return;
     running = true;
-    lastRun = Date.now();
     try {
       const now = Math.floor(Date.now() / 1000);
       for (const o of db.pendingOrders()) {
         if (o.valid_to < now + 20) {
           db.markStatus(o.id, 'expired', 'Not filled in time. Nothing was traded.');
-          await notify(o.tg_id, '<b>Order not filled.</b>\nWe couldn\'t fill it within your price limit in time, so nothing was traded. Your balance is unchanged.');
+          await notify(o.tg_id, "<b>Order not filled.</b>\nWe couldn't fill it within your price limit in time, so nothing was traded. Your balance is unchanged.");
         }
       }
       const groups = new Map<string, OrderRow[]>();
-      for (const o of db.pendingOrders()) {
-        const key = [o.sell_token.toLowerCase(), o.buy_token.toLowerCase()].sort().join('/');
-        groups.set(key, [...(groups.get(key) ?? []), o]);
-      }
+      for (const o of db.pendingOrders()) groups.set(pairKey(o), [...(groups.get(pairKey(o)) ?? []), o]);
       const fees = await feeConfig();
       for (const rows of groups.values()) {
+        if (!ready(rows)) continue;
+        lastRunAt = Date.now();
         let queue = rows.map(toSigned);
         for (let sub = 0; sub < 4 && queue.length > 0; sub++) {
           let done = false;
@@ -266,16 +288,20 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
               break;
             }
             try {
-              const r = await executeBatch(client, dep, solver, plan);
+              // Report the fill as soon as it is in a block; finality is tracked in the background.
+              const r = await executeBatch(client, dep, solver, plan, 1n);
               const batchId = db.insertBatch({ tx: r.hash, block: Number(r.block), trades: r.receipts.length, mtx: plan.matrixMarket });
-              const byDigest = new Map(queue.map((s) => [hashTypedData({ domain: orderDomain(dep.settlement), types: orderTypes, primaryType: 'Order', message: s.order }).toLowerCase(), s]));
+              const byDigest = new Map(queue.map((q) => [hashTypedData({ domain: orderDomain(dep.settlement), types: orderTypes, primaryType: 'Order', message: q.order }).toLowerCase(), q]));
               for (const rec of r.receipts) {
-                const s = byDigest.get(rec.orderDigest.toLowerCase());
-                if (!s) continue;
-                db.markFilled(s.id, { tx: r.hash, buy: rec.buyAmount.toString(), fee: rec.fee.toString(), direct: rec.directQuote.toString(), batchId });
-                const row = db.getOrder(s.id)!;
-                await notify(row.tg_id, fillMessage(row));
+                const q = byDigest.get(rec.orderDigest.toLowerCase());
+                if (!q) continue;
+                db.markFilled(q.id, { tx: r.hash, buy: rec.buyAmount.toString(), fee: rec.fee.toString(), direct: rec.directQuote.toString(), batchId });
+                const row = db.getOrder(q.id)!;
+                void notify(row.tg_id, fillMessage(row));
               }
+              void waitForConfirmations(client, r.hash, config.finalConfirmations)
+                .then(() => db.markConfirmed(r.hash))
+                .catch((e) => console.error(`settlement ${r.hash} did not reach finality:`, (e as Error).message));
               const filled = new Set(plan.clearing.fills.map((f) => f.id));
               queue = queue.filter((q) => !filled.has(q.id));
               done = true;
@@ -325,7 +351,8 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionActive' }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionValidUntil' }),
     ]);
-    const qms = Number(wqms + native) / 1e18;
+    const qms = Number(wqms) / 1e18;
+    const unwrapped = Number(native) / 1e18;
     const usd = Number(usdc) / 1e6;
     const filled = db.userOrders(tgId, 200).filter((o) => o.status === 'filled');
     let savedUsd = 0;
@@ -344,6 +371,8 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
         { symbol: 'USDC', name: 'USD Coin', amount: usd, valueUsd: usd, token: TOKENS.USDC },
       ],
       totalUsd: qms * usdcPerQms + usd,
+      /** Native QMS (e.g. from the faucet) is not tradeable until wrapped; shown separately and honestly. */
+      unwrappedQms: unwrapped,
       savedUsd,
       trades: filled.length,
       session: { active, validUntil: Number(validUntil) },
@@ -351,7 +380,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
   }
 
   function batchStatus() {
-    return { nextBatchInMs: msToNextBatch(), waiting: db.countPending(), batch: db.lastBatchId() + 1, intervalMs: config.batchIntervalMs };
+    return { nextBatchInMs: msToNextBatch(), waiting: db.countPending(), batch: db.lastBatchId() + 1, intervalMs: config.bestWindowMs, lastRunAt };
   }
 
   return { prepareRegistration, completeRegistration, quote, placeOrder, runBatch, portfolio, batchStatus, fillMessage, deployment: dep };

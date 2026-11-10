@@ -38,7 +38,12 @@ export const config = {
   solverKey: env('SOLVER_PRIVATE_KEY') as Hex,
   sponsorKey: env('SPONSOR_SIGNER_PRIVATE_KEY') as Hex,
   sessionEncKey: env('SESSION_ENC_KEY'),
-  batchIntervalMs: Number(env('BATCH_INTERVAL_MS', '10000')),
+  /** How often the engine looks for a batch to run. */
+  tickMs: Number(env('TICK_MS', '1000')),
+  /** Best-price orders wait at most this long for a trader on the other side. */
+  bestWindowMs: Number(env('BEST_WINDOW_MS', '5000')),
+  /** Blocks before a fill is marked final (the first block already shows it as filled). */
+  finalConfirmations: BigInt(env('FINAL_CONFIRMATIONS', '3')),
   orderTtlSec: Number(env('ORDER_TTL_SEC', '300')),
   defaultSlippageBps: BigInt(env('DEFAULT_SLIPPAGE_BPS', '50')),
   /** Test tokens given to each new user so they can trade within 30 seconds (testnet only). */

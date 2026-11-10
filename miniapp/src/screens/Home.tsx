@@ -51,7 +51,7 @@ export function Home({ me, nav }: { me: Me; nav: Nav }) {
     <div className="screen fade-in" style={{ paddingBottom: 0 }}>
       <div className="bar">
         <Wordmark width={88} />
-        <button className="btn-line" onClick={() => nav('control')} aria-label="Control" style={{ width: 36, height: 36, borderRadius: 18, border: '1px solid var(--rule-strong)', background: 'var(--white)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+        <button className="btn-line" onClick={() => nav('control')} aria-label="Wallet" style={{ width: 36, height: 36, borderRadius: 18, border: '1px solid var(--rule-strong)', background: 'var(--white)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
           {(me.firstName ?? 'Q').slice(0, 1).toUpperCase()}
         </button>
       </div>
@@ -72,10 +72,10 @@ export function Home({ me, nav }: { me: Me; nav: Nav }) {
         <Subdial progress={batch?.progress ?? 0} label={secs !== null ? `Next batch in ${secs} seconds` : 'Next batch'} />
         <div className="grow">
           <p style={{ margin: 0, fontSize: 15, fontWeight: 500 }}>
-            Next batch in <span className="num">{secs !== null ? `0:${String(secs).padStart(2, '0')}` : '–'}</span>
+            {batch && batch.waiting > 0 ? <>Next batch within <span className="num">{`0:${String(secs ?? 0).padStart(2, '0')}`}</span></> : 'Ready to trade'}
           </p>
           <p className="muted" style={{ margin: '3px 0 0', fontSize: 13 }}>
-            {batch ? (batch.waiting === 0 ? 'No orders waiting' : `${batch.waiting} ${batch.waiting === 1 ? 'order' : 'orders'} waiting to be matched`) : 'Connecting'}
+            {batch ? (batch.waiting === 0 ? 'Instant orders settle in the next block' : `${batch.waiting} ${batch.waiting === 1 ? 'order' : 'orders'} waiting to be matched`) : 'Connecting'}
           </p>
         </div>
         {batch && <span className="mono muted" style={{ fontSize: 12 }}>#{batch.batch.toLocaleString('en-US')}</span>}
@@ -109,7 +109,7 @@ export function Home({ me, nav }: { me: Me; nav: Nav }) {
         {([
           ['home', 'Home', 'M3.5 9.5 L11 3.5 L18.5 9.5 V18 H13.5 V13 H8.5 V18 H3.5 Z'],
           ['activity', 'Activity', 'M5 3.5 H17 V18.5 L14 16.8 L11 18.5 L8 16.8 L5 18.5 Z M8.5 8 H13.5 M8.5 11.5 H13.5'],
-          ['control', 'Control', 'M11 3 L18 6 V11 C18 15 15 17.8 11 19 C7 17.8 4 15 4 11 V6 Z'],
+          ['control', 'Wallet', 'M3.5 6.5 H17.5 V17.5 H3.5 Z M3.5 6.5 L14.5 3.5 V6.5 M13.5 12 H17.5'],
         ] as const).map(([key, label, d]) => (
           <button key={key} onClick={() => nav(key)} aria-current={key === 'home' ? 'page' : undefined} style={{ border: 0, background: 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '6px 0', fontSize: 11, fontWeight: key === 'home' ? 600 : 500, color: key === 'home' ? 'var(--ink)' : 'var(--graphite)', cursor: 'pointer' }}>
             <svg width="20" height="20" viewBox="0 0 22 22" aria-hidden="true"><path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>

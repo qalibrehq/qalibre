@@ -26,6 +26,9 @@ export interface OrderRow {
   nonce: string;
   signature: string;
   status: 'pending' | 'filled' | 'expired' | 'failed';
+  mode: 'instant' | 'best';
+  created_ms: number | null;
+  confirmed: number;
   reason: string | null;
   tx_hash: string | null;
   buy_amount: string | null;
@@ -85,6 +88,13 @@ export function openDb(path: string) {
     );
   `);
 
+  for (const ddl of ["ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER']) {
+    try {
+      db.exec(ddl);
+    } catch {
+      /* column exists */
+    }
+  }
   const now = () => Math.floor(Date.now() / 1000);
   return {
     raw: db,
@@ -106,10 +116,13 @@ export function openDb(path: string) {
     userByAccount(account: string): UserRow | undefined {
       return db.prepare('SELECT * FROM users WHERE lower(account) = lower(?)').get(account) as UserRow | undefined;
     },
-    insertOrder(o: Omit<OrderRow, 'status' | 'reason' | 'tx_hash' | 'buy_amount' | 'fee' | 'direct_quote' | 'batch_id' | 'created_at' | 'updated_at'>) {
+    insertOrder(o: Omit<OrderRow, 'status' | 'reason' | 'tx_hash' | 'buy_amount' | 'fee' | 'direct_quote' | 'batch_id' | 'created_at' | 'updated_at' | 'confirmed' | 'created_ms'>) {
       const t = now();
-      db.prepare(`INSERT INTO orders (id, tg_id, account, sell_token, buy_token, sell_amount, min_buy_amount, valid_to, nonce, signature, status, created_at, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`).run(o.id, o.tg_id, o.account, o.sell_token, o.buy_token, o.sell_amount, o.min_buy_amount, o.valid_to, o.nonce, o.signature, t, t);
+      db.prepare(`INSERT INTO orders (id, tg_id, account, sell_token, buy_token, sell_amount, min_buy_amount, valid_to, nonce, signature, status, mode, created_ms, created_at, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`).run(o.id, o.tg_id, o.account, o.sell_token, o.buy_token, o.sell_amount, o.min_buy_amount, o.valid_to, o.nonce, o.signature, o.mode, Date.now(), t, t);
+    },
+    markConfirmed(txHash: string) {
+      db.prepare('UPDATE orders SET confirmed = 1 WHERE tx_hash = ?').run(txHash);
     },
     pendingOrders(): OrderRow[] {
       return db.prepare("SELECT * FROM orders WHERE status = 'pending' ORDER BY created_at").all() as unknown as OrderRow[];

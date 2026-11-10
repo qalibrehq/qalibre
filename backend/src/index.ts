@@ -15,5 +15,5 @@ await setupBot(bot).catch((e) => console.error('bot setup', (e as Error).message
 startBot(bot, db, svc);
 startApi(db, svc);
 
-setInterval(() => void svc.runBatch(), config.batchIntervalMs);
-console.log(`Qalibre backend running. Settlement ${svc.deployment.settlement}. Batch every ${config.batchIntervalMs / 1000}s.`);
+setInterval(() => void svc.runBatch(), config.tickMs);
+console.log(`Qalibre backend running. Settlement ${svc.deployment.settlement}. Instant orders clear in the next block; best-price orders wait up to ${config.bestWindowMs / 1000}s for a match.`);
