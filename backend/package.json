@@ -1,0 +1,21 @@
+{
+  "name": "@qalibre/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Qalibre backend: Telegram bot, Mini App API, batch engine.",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "viem": "^2.21.54"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}
