@@ -2,11 +2,11 @@
 pragma solidity 0.8.28;
 
 /// @title OrderLib
-/// @notice The EIP-712 order every Qlear trade is built from.
+/// @notice The EIP-712 order every Qensa trade is built from.
 /// @dev Both the account and the settlement contract compute the digest with this library,
 ///      so the account never has to trust a hash handed to it by someone else.
 library OrderLib {
-    /// @param account       The Qlear account selling tokens. Proceeds always return to this account.
+    /// @param account       The Qensa account selling tokens. Proceeds always return to this account.
     /// @param sellToken     Token the account gives.
     /// @param buyToken      Token the account receives.
     /// @param sellAmount    Exact amount of sellToken (fill-or-kill).
@@ -30,7 +30,7 @@ library OrderLib {
     bytes32 internal constant DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
 
-    bytes32 internal constant NAME_HASH = keccak256("Qlear Settlement");
+    bytes32 internal constant NAME_HASH = keccak256("Qensa Settlement");
     bytes32 internal constant VERSION_HASH = keccak256("1");
 
     function domainSeparator(address settlement) internal view returns (bytes32) {

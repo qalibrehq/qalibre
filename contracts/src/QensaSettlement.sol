@@ -8,10 +8,10 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {OrderLib} from "./libraries/OrderLib.sol";
-import {IQlearAccount} from "./interfaces/IQlearAccount.sol";
+import {IQensaAccount} from "./interfaces/IQensaAccount.sol";
 import {IVenueAdapter} from "./interfaces/IVenueAdapter.sol";
 
-/// @title QlearSettlement
+/// @title QensaSettlement
 /// @notice Batch auction with uniform clearing prices.
 ///
 /// A whitelisted solver submits a batch: a list of tokens with one clearing price each, the signed orders,
@@ -25,7 +25,7 @@ import {IVenueAdapter} from "./interfaces/IVenueAdapter.sol";
 ///   3b. Never worse than direct: when a trade carries a reference venue, the contract quotes what the order
 ///      would have received swapping directly on that venue's pool (before any batch swap moves the price).
 ///      The trade reverts unless the batch price is at least as good, and the fee is taken ONLY from the
-///      improvement: fee = min(feeBps of the trade, surplusShareBps of the improvement). Qlear earns only
+///      improvement: fee = min(feeBps of the trade, surplusShareBps of the improvement). Qensa earns only
 ///      when it saves the user money, and the user always ends up at or above the direct price.
 ///   4. No skimming: after the batch, the contract may keep at most MAX_DUST_BPS (0.01%) of payouts as
 ///      rounding dust. Every other token it received has been paid out to traders.
@@ -34,7 +34,7 @@ import {IVenueAdapter} from "./interfaces/IVenueAdapter.sol";
 ///
 /// The owner can only: set the fee (<= cap), the fee recipient, the solver list and the adapter list.
 /// The owner has no function to move tokens.
-contract QlearSettlement is Ownable2Step, ReentrancyGuard {
+contract QensaSettlement is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     struct Trade {
@@ -219,7 +219,7 @@ contract QlearSettlement is Ownable2Step, ReentrancyGuard {
 
         IERC20 sell = IERC20(o.sellToken);
         uint256 before = sell.balanceOf(address(this));
-        IQlearAccount(o.account).authorizeOrder(o, tr.signature);
+        IQensaAccount(o.account).authorizeOrder(o, tr.signature);
         if (sell.balanceOf(address(this)) - before != o.sellAmount) revert WrongAmountReceived();
 
         uint256 gross = Math.mulDiv(o.sellAmount, prices[tr.sellTokenIndex], prices[tr.buyTokenIndex]);

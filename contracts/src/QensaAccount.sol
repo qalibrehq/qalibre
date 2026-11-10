@@ -13,25 +13,25 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
 import {OrderLib} from "./libraries/OrderLib.sol";
-import {IQlearAccount} from "./interfaces/IQlearAccount.sol";
+import {IQensaAccount} from "./interfaces/IQensaAccount.sol";
 import {ISignatureValidator} from "./interfaces/ISignatureValidator.sol";
 
-/// @title QlearAccount
+/// @title QensaAccount
 /// @notice A non-custodial ERC-4337 smart account owned by one user.
 ///
 /// Who can do what:
 ///   OWNER       - everything: execute any call, withdraw, change limits, revoke the session key,
 ///                 swap the signature validator (post-quantum upgrade slot). Can act through the
 ///                 ERC-4337 EntryPoint (gasless via a paymaster) OR by calling this contract directly,
-///                 so the user never depends on the Qlear app to reach their funds.
-///   SESSION KEY - (held by the Qlear backend) can ONLY sign trade orders. Those orders are executed
+///                 so the user never depends on the Qensa app to reach their funds.
+///   SESSION KEY - (held by the Qensa backend) can ONLY sign trade orders. Those orders are executed
 ///                 by the trusted settlement contract, are capped per trade and per day, limited to
 ///                 approved tokens, expire, and always pay proceeds back into THIS account.
 ///                 A session key can never sign a UserOperation, call `execute`, or withdraw.
 ///   SETTLEMENT  - can only call `authorizeOrder` with a correctly signed order.
 ///
-/// There is no admin, no upgrade proxy and no pause. Qlear cannot move user funds.
-contract QlearAccount is BaseAccount, IERC1271, IQlearAccount, Initializable {
+/// There is no admin, no upgrade proxy and no pause. Qensa cannot move user funds.
+contract QensaAccount is BaseAccount, IERC1271, IQensaAccount, Initializable {
     using SafeERC20 for IERC20;
 
     // ---------------------------------------------------------------------------------------------
@@ -259,7 +259,7 @@ contract QlearAccount is BaseAccount, IERC1271, IQlearAccount, Initializable {
         emit OwnerChanged(newOwner);
     }
 
-    /// @notice Point the account at a different settlement contract (e.g. a new Qlear version). Owner only.
+    /// @notice Point the account at a different settlement contract (e.g. a new Qensa version). Owner only.
     function setSettlement(address newSettlement) external onlyOwnerAuth {
         if (newSettlement == address(0)) revert ZeroAddress();
         settlement = newSettlement;
@@ -270,7 +270,7 @@ contract QlearAccount is BaseAccount, IERC1271, IQlearAccount, Initializable {
     // Trading
     // ---------------------------------------------------------------------------------------------
 
-    /// @inheritdoc IQlearAccount
+    /// @inheritdoc IQensaAccount
     function authorizeOrder(OrderLib.Order calldata order, bytes calldata signature) external {
         if (msg.sender != settlement) revert NotSettlement();
         if (order.account != address(this)) revert WrongAccount();

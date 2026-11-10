@@ -6,9 +6,9 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 
-import {QlearAccount} from "../../src/QlearAccount.sol";
-import {QlearAccountFactory} from "../../src/QlearAccountFactory.sol";
-import {QlearSettlement} from "../../src/QlearSettlement.sol";
+import {QensaAccount} from "../../src/QensaAccount.sol";
+import {QensaAccountFactory} from "../../src/QensaAccountFactory.sol";
+import {QensaSettlement} from "../../src/QensaSettlement.sol";
 import {QwapV2Adapter, IQwapRouter} from "../../src/adapters/QwapV2Adapter.sol";
 import {OrderLib} from "../../src/libraries/OrderLib.sol";
 
@@ -25,11 +25,11 @@ contract QwapForkTest is Test {
     uint256 constant ALICE = 0xA11CE;
     uint256 constant BOB = 0xB0B;
 
-    QlearSettlement settlement;
-    QlearAccountFactory factory;
+    QensaSettlement settlement;
+    QensaAccountFactory factory;
     QwapV2Adapter adapter;
-    QlearAccount alice;
-    QlearAccount bob;
+    QensaAccount alice;
+    QensaAccount bob;
     address solver = makeAddr("solver");
     address feeRecipient = makeAddr("fee");
     bool enabled;
@@ -40,8 +40,8 @@ contract QwapForkTest is Test {
         vm.createSelectFork(rpc);
         enabled = true;
 
-        settlement = new QlearSettlement(address(this), feeRecipient, 20, 2_000); // launch settings
-        factory = new QlearAccountFactory(IEntryPoint(ENTRY_POINT), address(settlement));
+        settlement = new QensaSettlement(address(this), feeRecipient, 20, 2_000); // launch settings
+        factory = new QensaAccountFactory(IEntryPoint(ENTRY_POINT), address(settlement));
         adapter = new QwapV2Adapter(IQwapRouter(QWAP_ROUTER), address(settlement));
         settlement.setSolver(solver, true);
         settlement.setAdapter(address(adapter), true);
@@ -70,7 +70,7 @@ contract QwapForkTest is Test {
         emit log_named_decimal_uint("QWAP: 1 WQMS buys USDC", amounts[1], 6);
     }
 
-    /// One trader alone: everything goes to QWAP. They get exactly the direct price and pay no Qlear fee.
+    /// One trader alone: everything goes to QWAP. They get exactly the direct price and pay no Qensa fee.
     function test_fork_loneTradeGetsDirectPriceAndPaysNoFee() public onlyFork {
         uint256 direct = adapter.quote(WQMS, USDC, 10 ether, "");
         OrderLib.Order memory o = _order(alice, WQMS, USDC, 10 ether, (direct * 99) / 100);
@@ -80,10 +80,10 @@ contract QwapForkTest is Test {
         prices[iW] = direct; // gross = 10e18 * direct / 10e18 = direct
         prices[iU] = 10 ether;
 
-        QlearSettlement.Trade[] memory trades = new QlearSettlement.Trade[](1);
+        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](1);
         trades[0] = _trade(o, iW, iU);
-        QlearSettlement.Interaction[] memory its = new QlearSettlement.Interaction[](1);
-        its[0] = QlearSettlement.Interaction(address(adapter), iW, iU, 10 ether, direct, "");
+        QensaSettlement.Interaction[] memory its = new QensaSettlement.Interaction[](1);
+        its[0] = QensaSettlement.Interaction(address(adapter), iW, iU, 10 ether, direct, "");
 
         vm.prank(solver);
         settlement.settle(toks, prices, trades, its);
@@ -120,11 +120,11 @@ contract QwapForkTest is Test {
         prices[iW] = r;
         prices[iU] = 1e18;
 
-        QlearSettlement.Trade[] memory trades = new QlearSettlement.Trade[](2);
+        QensaSettlement.Trade[] memory trades = new QensaSettlement.Trade[](2);
         trades[0] = _trade(_order(alice, WQMS, USDC, sellW, directAlice), iW, iU);
         trades[1] = _trade(_order(bob, USDC, WQMS, sellU, directBob), iU, iW);
-        QlearSettlement.Interaction[] memory its = new QlearSettlement.Interaction[](1);
-        its[0] = QlearSettlement.Interaction(address(adapter), iW, iU, excessW, 0, "");
+        QensaSettlement.Interaction[] memory its = new QensaSettlement.Interaction[](1);
+        its[0] = QensaSettlement.Interaction(address(adapter), iW, iU, excessW, 0, "");
 
         vm.prank(solver);
         settlement.settle(toks, prices, trades, its);
@@ -134,30 +134,30 @@ contract QwapForkTest is Test {
         assertGe(gotAlice, directAlice);
         assertGt(gotBob, directBob);
         emit log_named_decimal_uint("Alice direct on QWAP (USDC)", directAlice, 6);
-        emit log_named_decimal_uint("Alice with Qlear     (USDC)", gotAlice, 6);
+        emit log_named_decimal_uint("Alice with Qensa     (USDC)", gotAlice, 6);
         emit log_named_decimal_uint("Bob direct on QWAP   (WQMS)", directBob, 18);
-        emit log_named_decimal_uint("Bob with Qlear       (WQMS)", gotBob, 18);
-        emit log_named_decimal_uint("Qlear fee (USDC)", IERC20(USDC).balanceOf(feeRecipient), 6);
+        emit log_named_decimal_uint("Bob with Qensa       (WQMS)", gotBob, 18);
+        emit log_named_decimal_uint("Qensa fee (USDC)", IERC20(USDC).balanceOf(feeRecipient), 6);
     }
 
     // ---------------------------------------------------------------------------------------------
 
-    function _account(uint256 pk) internal returns (QlearAccount) {
-        QlearAccount.SessionSetup memory s;
+    function _account(uint256 pk) internal returns (QensaAccount) {
+        QensaAccount.SessionSetup memory s;
         s.key = vm.addr(SESSION_PK);
         s.validUntil = uint48(block.timestamp + 7 days);
-        s.limits = new QlearAccount.TokenLimit[](2);
-        s.limits[0] = QlearAccount.TokenLimit(WQMS, 1_000 ether, 10_000 ether);
-        s.limits[1] = QlearAccount.TokenLimit(USDC, 1_000_000e6, 10_000_000e6);
+        s.limits = new QensaAccount.TokenLimit[](2);
+        s.limits[0] = QensaAccount.TokenLimit(WQMS, 1_000 ether, 10_000 ether);
+        s.limits[1] = QensaAccount.TokenLimit(USDC, 1_000_000e6, 10_000_000e6);
         s.buyTokens = new address[](2);
         s.buyTokens[0] = WQMS;
         s.buyTokens[1] = USDC;
-        QlearAccountFactory.Setup memory setup = QlearAccountFactory.Setup(vm.addr(pk), 0, s);
+        QensaAccountFactory.Setup memory setup = QensaAccountFactory.Setup(vm.addr(pk), 0, s);
         (uint8 v, bytes32 r, bytes32 sg) = vm.sign(pk, MessageHashUtils.toEthSignedMessageHash(factory.setupHash(setup)));
         return factory.createAccount(setup, abi.encodePacked(r, sg, v));
     }
 
-    function _order(QlearAccount a, address sell, address buy, uint256 amount, uint256 minBuy)
+    function _order(QensaAccount a, address sell, address buy, uint256 amount, uint256 minBuy)
         internal
         view
         returns (OrderLib.Order memory)
@@ -168,10 +168,10 @@ contract QwapForkTest is Test {
     function _trade(OrderLib.Order memory o, uint256 sellIdx, uint256 buyIdx)
         internal
         view
-        returns (QlearSettlement.Trade memory t)
+        returns (QensaSettlement.Trade memory t)
     {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(SESSION_PK, settlement.orderDigest(o));
-        t = QlearSettlement.Trade(sellIdx, buyIdx, o, abi.encodePacked(uint8(1), r, s, v), address(adapter));
+        t = QensaSettlement.Trade(sellIdx, buyIdx, o, abi.encodePacked(uint8(1), r, s, v), address(adapter));
     }
 
     function _tokens() internal pure returns (address[] memory toks, uint256 iW, uint256 iU) {

@@ -6,21 +6,21 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 
-import {QlearAccount} from "./QlearAccount.sol";
+import {QensaAccount} from "./QensaAccount.sol";
 
-/// @title QlearAccountFactory
-/// @notice Deploys one QlearAccount per (owner, salt) at a predictable address.
+/// @title QensaAccountFactory
+/// @notice Deploys one QensaAccount per (owner, salt) at a predictable address.
 /// @dev Accounts are minimal (EIP-1167) clones: NOT upgradeable proxies. Nobody can change their code.
 ///      Creation requires the owner's signature over the full setup (settlement + session key + limits),
 ///      so no one can create an account for a user with a session key the user did not approve.
-contract QlearAccountFactory {
+contract QensaAccountFactory {
     struct Setup {
         address owner;
         uint256 salt;
-        QlearAccount.SessionSetup session;
+        QensaAccount.SessionSetup session;
     }
 
-    QlearAccount public immutable accountImplementation;
+    QensaAccount public immutable accountImplementation;
     address public immutable settlement;
 
     event AccountCreated(address indexed account, address indexed owner, uint256 salt);
@@ -28,7 +28,7 @@ contract QlearAccountFactory {
     error BadOwnerSignature();
 
     constructor(IEntryPoint entryPoint, address settlement_) {
-        accountImplementation = new QlearAccount(entryPoint);
+        accountImplementation = new QensaAccount(entryPoint);
         settlement = settlement_;
     }
 
@@ -37,9 +37,9 @@ contract QlearAccountFactory {
         return keccak256(abi.encode(block.chainid, address(this), settlement, keccak256(abi.encode(s))));
     }
 
-    function createAccount(Setup calldata s, bytes calldata ownerSignature) external returns (QlearAccount account) {
+    function createAccount(Setup calldata s, bytes calldata ownerSignature) external returns (QensaAccount account) {
         address predicted = getAddress(s.owner, s.salt);
-        if (predicted.code.length > 0) return QlearAccount(payable(predicted));
+        if (predicted.code.length > 0) return QensaAccount(payable(predicted));
 
         bytes32 h = MessageHashUtils.toEthSignedMessageHash(setupHash(s));
         (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(h, ownerSignature);
@@ -47,7 +47,7 @@ contract QlearAccountFactory {
             revert BadOwnerSignature();
         }
 
-        account = QlearAccount(payable(Clones.cloneDeterministic(address(accountImplementation), _salt(s.owner, s.salt))));
+        account = QensaAccount(payable(Clones.cloneDeterministic(address(accountImplementation), _salt(s.owner, s.salt))));
         account.initialize(s.owner, settlement, s.session);
         emit AccountCreated(address(account), s.owner, s.salt);
     }

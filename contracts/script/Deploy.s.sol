@@ -4,12 +4,12 @@ pragma solidity 0.8.28;
 import {Script, console2} from "forge-std/Script.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 
-import {QlearSettlement} from "../src/QlearSettlement.sol";
-import {QlearAccountFactory} from "../src/QlearAccountFactory.sol";
-import {QlearPaymaster} from "../src/QlearPaymaster.sol";
+import {QensaSettlement} from "../src/QensaSettlement.sol";
+import {QensaAccountFactory} from "../src/QensaAccountFactory.sol";
+import {QensaPaymaster} from "../src/QensaPaymaster.sol";
 import {QwapV2Adapter, IQwapRouter} from "../src/adapters/QwapV2Adapter.sol";
 
-/// @notice One-command deploy of the whole Qlear stack.
+/// @notice One-command deploy of the whole Qensa stack.
 ///
 ///   forge script script/Deploy.s.sol --rpc-url qms --broadcast --slow
 ///
@@ -22,7 +22,7 @@ contract Deploy is Script {
     address constant ENTRY_POINT_V07 = 0x0000000071727De22E5E9d8BAf0edAc6f37da032;
     address constant QWAP_ROUTER = 0x93AFF45f28e5DF1b55f5AEFEfB807De843b12619;
 
-    bytes32 constant SALT = keccak256("qlear.v1");
+    bytes32 constant SALT = keccak256("qensa.v1");
 
     function run() external {
         uint256 deployerPk = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -42,13 +42,13 @@ contract Deploy is Script {
         vm.startBroadcast(deployerPk);
 
         // Owner is the deployer (constant), fee settings go through setters so they don't change addresses.
-        QlearSettlement settlement = QlearSettlement(
-            _deploy(abi.encodePacked(type(QlearSettlement).creationCode, abi.encode(deployer, deployer, 0, 0)))
+        QensaSettlement settlement = QensaSettlement(
+            _deploy(abi.encodePacked(type(QensaSettlement).creationCode, abi.encode(deployer, deployer, 0, 0)))
         );
-        QlearAccountFactory factory = QlearAccountFactory(
+        QensaAccountFactory factory = QensaAccountFactory(
             _deploy(
                 abi.encodePacked(
-                    type(QlearAccountFactory).creationCode, abi.encode(IEntryPoint(entryPoint), address(settlement))
+                    type(QensaAccountFactory).creationCode, abi.encode(IEntryPoint(entryPoint), address(settlement))
                 )
             )
         );
@@ -59,13 +59,17 @@ contract Deploy is Script {
                 )
             )
         );
-        QlearPaymaster paymaster = QlearPaymaster(
+        QensaPaymaster paymaster = QensaPaymaster(
             payable(
                 _deploy(
-                    abi.encodePacked(type(QlearPaymaster).creationCode, abi.encode(IEntryPoint(entryPoint), sponsor))
+                    abi.encodePacked(type(QensaPaymaster).creationCode, abi.encode(IEntryPoint(entryPoint), sponsor, deployer))
                 )
             )
         );
+
+        // Ownership must be the deployer, never the CREATE2 factory.
+        require(settlement.owner() == deployer, "settlement owner mismatch");
+        require(paymaster.owner() == deployer, "paymaster owner mismatch");
 
         // Configuration (idempotent).
         if (settlement.feeRecipient() != feeRecipient) settlement.setFeeRecipient(feeRecipient);
