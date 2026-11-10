@@ -1,0 +1,23 @@
+{
+  "name": "@qalibre/solver",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Qalibre batch-auction solver: QUBO order selection, uniform clearing prices, QWAP routing.",
+  "scripts": {
+    "abi": "node scripts/export-abi.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "start": "tsx src/server.ts",
+    "demo": "tsx scripts/demo.ts"
+  },
+  "dependencies": {
+    "viem": "^2.21.54"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}
