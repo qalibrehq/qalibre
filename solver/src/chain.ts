@@ -123,7 +123,10 @@ export async function signOrderAsSession(session: LocalAccount, settlement: Addr
 // Pools
 // ---------------------------------------------------------------------------------------------
 
-/** Reserves of the QWAP pair, oriented so `a` is the lower-address token. */
+/**
+ * Reserves of the QWAP pair for (tokenA, tokenB), oriented by ARGUMENT ORDER:
+ * `a` is always the reserve of `tokenA` (the first argument) and `b` of `tokenB`, whatever their addresses.
+ */
 export async function readReserves(client: PublicClient, router: Address, tokenA: Address, tokenB: Address) {
   const factory = await client.readContract({ address: router, abi: routerAbi, functionName: 'factory' });
   const pair = await client.readContract({ address: factory, abi: factoryV2Abi, functionName: 'getPair', args: [tokenA, tokenB] });

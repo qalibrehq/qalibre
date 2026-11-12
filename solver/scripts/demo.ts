@@ -116,7 +116,8 @@ async function main() {
   const res0 = await readReserves(client, dep.qwapRouter, WQMS, USDC);
   const wqmsIsA = WQMS.toLowerCase() < USDC.toLowerCase();
   const direct = (sell: Address, amount: bigint) => {
-    const sellIsA = (sell === WQMS) === wqmsIsA;
+    // readReserves(WQMS, USDC) orients by argument order: a = WQMS reserve.
+    const sellIsA = sell === WQMS;
     return sellIsA ? getAmountOut(amount, res0.a, res0.b) : getAmountOut(amount, res0.b, res0.a);
   };
   const pending: SignedOrder[] = [];

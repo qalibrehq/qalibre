@@ -440,8 +440,8 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
     if (!isCurrent(user)) return { registered: false as const, upgraded: Boolean(user?.account) };
     const account = user.account as Address;
     const res = await readReserves(client, dep.qwapRouter, TOKENS.WQMS, TOKENS.USDC);
-    const wqmsIsA = TOKENS.WQMS.toLowerCase() < TOKENS.USDC.toLowerCase();
-    const usdcPerQms = wqmsIsA ? Number(res.b) / 1e6 / (Number(res.a) / 1e18) : Number(res.a) / 1e6 / (Number(res.b) / 1e18);
+    // readReserves orients by argument order: a = WQMS reserve, b = USDC reserve.
+    const usdcPerQms = Number(res.b) / 1e6 / (Number(res.a) / 1e18);
     const [wqms, usdc, native, active, validUntil] = await Promise.all([
       client.readContract({ address: TOKENS.WQMS, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
       client.readContract({ address: TOKENS.USDC, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
