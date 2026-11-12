@@ -75,8 +75,8 @@ const SECURITY_HEADERS = {
   'content-security-policy': [
     "default-src 'self'",
     "script-src 'self' https://telegram.org",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'", // Inter is bundled with the app
     "img-src 'self' data: https://t.me https://*.t.me https://*.telesco.pe", // Telegram profile photos
     "connect-src 'self'",
     "frame-ancestors https://web.telegram.org https://*.telegram.org",
@@ -180,7 +180,7 @@ export function startApi(db: Db, svc: Service, owner: OwnerOps, extras: ApiExtra
         const address = url.searchParams.get('address') ?? '';
         if (!isAddress(address)) throw new UserError('Invalid token address.');
         const s = await checkToken(address as Address).catch(() => {
-          throw new UserError('That address is not a token Qalibre can read.');
+          throw new UserError('That address doesn\'t look like a token on QMS. Check it and paste it again.');
         });
         return send(res, 200, s, origin);
       }

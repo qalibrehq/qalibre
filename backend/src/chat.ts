@@ -226,7 +226,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       });
       db.setCardMessage(c.card, m.message_id);
     } catch (e) {
-      await bot.sendMessage(tgId, esc(e instanceof UserError ? e.message : 'That token could not be checked right now. Try again in a moment.'));
+      await bot.sendMessage(tgId, esc(e instanceof UserError ? e.message : 'Couldn\'t check that token just now. Try again in a moment.'));
       if (!(e instanceof UserError)) console.error('card', (e as Error).message);
     }
   }
@@ -241,7 +241,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
    */
   async function trade(tgId: number, token: TokenInfo, side: 'buy' | 'sell', amount: bigint, opts: { acceptImpact?: boolean; acceptRisk?: boolean } = {}) {
     if (inFlight.has(tgId)) {
-      await bot.sendMessage(tgId, 'Your previous order is still being placed. One moment.');
+      await bot.sendMessage(tgId, 'Still placing your last order. One moment.');
       return;
     }
     inFlight.add(tgId);
@@ -250,7 +250,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
         const s = await checkToken(token.address);
         if (s.verdict === 'high') {
           confirming.set(tgId, { token: token.address, side, amount, acceptImpact: Boolean(opts.acceptImpact), until: Date.now() + 120_000 });
-          await bot.sendMessage(tgId, `<b>${esc(token.symbol)} is high risk (${s.score}/100).</b>\n${s.findings.filter((f) => f.level === 'caution' || f.level === 'danger').slice(0, 3).map((f) => esc(f.title)).join('. ')}.\n\nBuy ${trimUnits(amount, 18)} QMS of it anyway?`, {
+          await bot.sendMessage(tgId, `<b>Careful: ${esc(token.symbol)} scores ${s.score}/100.</b>\n${s.findings.filter((f) => f.level === 'caution' || f.level === 'danger').slice(0, 3).map((f) => esc(f.title)).join('  ·  ')}\n\nStill want to buy it with ${trimUnits(amount, 18)} QMS?`, {
             reply_markup: { inline_keyboard: [[{ text: 'Buy anyway', callback_data: 'y' }, { text: 'Cancel', callback_data: 'n' }]] },
           });
           return;
@@ -264,7 +264,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       } catch (e) {
         if (e instanceof HighImpact) {
           confirming.set(tgId, { token: token.address, side, amount, acceptImpact: true, until: Date.now() + 120_000 });
-          await bot.sendMessage(tgId, `<b>Price impact about ${(e.impactBps / 100).toFixed(1)}%.</b>\nThis pool is small, so this trade moves the price against you. You still never get less than a direct swap would pay.`, {
+          await bot.sendMessage(tgId, `<b>This trade moves the price about ${(e.impactBps / 100).toFixed(1)}%.</b>\nThe pool is small, so a trade this size pushes the price against you. You\'re still guaranteed at least what a direct swap would pay.`, {
             reply_markup: { inline_keyboard: [[{ text: side === 'buy' ? 'Buy anyway' : 'Sell anyway', callback_data: 'y' }, { text: 'Cancel', callback_data: 'n' }]] },
           });
           return;
@@ -277,10 +277,10 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
         throw e;
       }
       const buyInfo = side === 'buy' ? token : { symbol: 'QMS', decimals: 18 };
-      const status = (await bot.sendMessage(tgId, [`<b>${label}</b>`, `Settling in the next block. You get at least ${fmtToken(r.minOut, buyInfo.decimals)} ${esc(buyInfo.symbol)}, and never less than a direct swap.`].join('\n'))) as { message_id: number };
+      const status = (await bot.sendMessage(tgId, [`<b>${label}</b>`, `Done in about ten seconds. You\'ll get at least ${fmtToken(r.minOut, buyInfo.decimals)} ${esc(buyInfo.symbol)}, never less than a direct swap.`].join('\n'))) as { message_id: number };
       db.setStatusMessage(r.id, status.message_id);
     } catch (e) {
-      await bot.sendMessage(tgId, esc(e instanceof UserError ? e.message : 'Something went wrong placing that order. Nothing was traded.'));
+      await bot.sendMessage(tgId, esc(e instanceof UserError ? e.message : 'Something went wrong on our side placing that order. Nothing was traded, so you can safely try again.'));
       if (!(e instanceof UserError)) console.error('chat trade', (e as Error).message);
     } finally {
       inFlight.delete(tgId);
@@ -333,7 +333,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
     const p = await svc.portfolio(tgId);
     if (!p.registered) {
       const url = appUrl({});
-      await bot.sendMessage(tgId, "You don't have a Qalibre wallet yet. Creating one takes about thirty seconds.", url ? { reply_markup: { inline_keyboard: [[{ text: 'Create your wallet', web_app: { url } }]] } } : {});
+      await bot.sendMessage(tgId, "You don't have a Qalibre wallet yet. It takes about thirty seconds to create one.", url ? { reply_markup: { inline_keyboard: [[{ text: 'Create your wallet', web_app: { url } }]] } } : {});
       return;
     }
     const pos = await svc.positions(tgId);
@@ -383,7 +383,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
 
   async function lookup(tgId: number, query: string, replyTo?: number) {
     if (!rateOk(tgId)) {
-      await bot.sendMessage(tgId, 'Too many lookups at once. Wait a few seconds and try again.');
+      await bot.sendMessage(tgId, 'That\'s a lot of lookups at once. Give it a few seconds.');
       return;
     }
     const r = await resolveToken(query);
@@ -392,7 +392,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       return;
     }
     if (r.token.verified && r.token.address.toLowerCase() === WQMS) {
-      await bot.sendMessage(tgId, 'QMS is what you trade with. Paste the address of the token you want to buy with it.');
+      await bot.sendMessage(tgId, 'That\'s QMS itself, the coin you trade with. Paste the token you want to buy with it.');
       return;
     }
     await sendCard(tgId, r.token.address, replyTo);
@@ -430,7 +430,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       }
       const amount = parseTyped(m[2], cmd === '/buy' ? 18 : r.token.decimals);
       if (amount === null) {
-        await bot.sendMessage(tgId, 'That amount is not a number Qalibre can read.');
+        await bot.sendMessage(tgId, 'I couldn\'t read that amount. Try something like 0.2.');
         return true;
       }
       await trade(tgId, r.token, cmd === '/buy' ? 'buy' : 'sell', amount);
@@ -524,7 +524,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
 
     const m = data.match(/^c:([A-Za-z0-9_-]{8}):(b\d|bx|s25|s50|s100|r)$/);
     const card = m ? db.getCard(m[1]!) : undefined;
-    if (!m || !card || card.tg_id !== tgId) return bot.answer(q.id, 'This card has expired. Paste the token address again.', true);
+    if (!m || !card || card.tg_id !== tgId) return bot.answer(q.id, 'This card is out of date. Paste the token address again for a fresh one.', true);
     const op = m[2]!;
     const token = card.token as Address;
 
@@ -541,7 +541,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
           .catch(async () => (await bot.sendPhoto(tgId, c.image, c.text, { reply_markup: { inline_keyboard: c.keyboard } })).message_id);
         db.setCardMessage(c.card, msgId);
       } catch (e) {
-        await bot.sendMessage(tgId, esc(e instanceof UserError ? e.message : 'Could not refresh this token right now.'));
+        await bot.sendMessage(tgId, esc(e instanceof UserError ? e.message : 'Couldn\'t refresh this token just now. Try again in a moment.'));
       }
       return;
     }
@@ -552,7 +552,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       const side = 'buy' as const;
       awaiting.set(tgId, { token, side, until: Date.now() + 120_000 });
       await bot.answer(q.id);
-      await bot.sendMessage(tgId, `How much QMS do you want to spend on ${esc(info.token.symbol)}? Type an amount, for example <code>0.2</code>.`, { reply_markup: { force_reply: true, input_field_placeholder: 'Amount in QMS' } });
+      await bot.sendMessage(tgId, `How much QMS would you like to spend on ${esc(info.token.symbol)}? Type an amount, like <code>0.2</code>.`, { reply_markup: { force_reply: true, input_field_placeholder: 'Amount in QMS' } });
       return;
     }
     if (op.startsWith('b')) {
@@ -581,7 +581,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       if (!msgId) msgId = (await bot.sendPhoto(tgId, c.image, c.text, { reply_markup: { inline_keyboard: c.keyboard } })).message_id;
       db.setCardMessage(c.card, msgId);
       const info = await resolveToken(token);
-      await bot.sendMessage(tgId, `<b>${esc(info.token?.symbol ?? 'Token')} approved.</b> Tap Buy on the card to trade it.`, { reply_parameters: { message_id: msgId, allow_sending_without_reply: true } });
+      await bot.sendMessage(tgId, `<b>${esc(info.token?.symbol ?? 'Token')} is approved.</b> The card above now has Buy buttons.`, { reply_parameters: { message_id: msgId, allow_sending_without_reply: true } });
     }
   }
 

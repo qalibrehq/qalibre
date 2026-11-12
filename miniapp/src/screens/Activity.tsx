@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, fromUnits, TOKENS, type Me, type OrderRow } from '../api';
 import { TokenIcon } from '../ui/TokenIcon';
 import { TabBar } from '../ui/TabBar';
+import { Skeleton } from '../ui/Splash';
 import type { Nav } from '../App';
 
 const STATUS: Record<OrderRow['status'], { text: string; color: string }> = {
@@ -63,6 +64,8 @@ export function Activity({ me, nav }: { me: Me; nav: Nav }) {
       <div className="bar">
         <span className="label" style={{ fontSize: 22, letterSpacing: '-0.02em' }}>Activity</span>
       </div>
+
+      {!orders && <div style={{ marginTop: 26 }}><Skeleton rows={4} /></div>}
 
       {orders && orders.length === 0 && (
         <div style={{ marginTop: 90, textAlign: 'center' }}>

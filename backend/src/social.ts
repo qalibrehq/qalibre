@@ -133,7 +133,7 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
         const addr = rest.join(' ').match(/0x[0-9a-fA-F]{40}/);
         if (!addr) return void (await bot.sendMessage(chatId, 'Use <code>/token 0x…</code> with a token address.', reply));
         if (!chatRateOk(chatId, 6, 60_000)) return;
-        await postSafety(chatId, getAddress(addr[0]) as Address, messageId, false).catch(() => bot.sendMessage(chatId, 'That address is not a token Qalibre can read.', reply));
+        await postSafety(chatId, getAddress(addr[0]) as Address, messageId, false).catch(() => bot.sendMessage(chatId, 'That address doesn\'t look like a token on QMS. Check it and paste it again.', reply));
       }
       return;
     }

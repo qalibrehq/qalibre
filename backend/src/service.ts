@@ -168,9 +168,9 @@ export function createService(db: Db, notify: Notify) {
       const sent = await sendTestFunds(account);
       db.markDripped(tgId);
       if (sent.wqms > 0n || sent.usdc > 0n) {
-        await notify(tgId, '<b>Your wallet is ready.</b>\nWe added a little test QMS and USDC so you can make your first trade right away.');
+        await notify(tgId, '<b>Your wallet is ready.</b>\nWe\'ve added some test QMS and USDC. Paste any token address here to make your first trade.');
       } else {
-        await notify(tgId, '<b>Your wallet is ready.</b>\nOur test-fund reserve is being refilled. Tap Get test funds in the app a little later.');
+        await notify(tgId, '<b>Your wallet is ready.</b>\nOur test-fund tap is being refilled. Try Get test funds in your Wallet in a little while.');
       }
     } catch (e) {
       console.error('drip failed', (e as Error).message);
@@ -190,7 +190,7 @@ export function createService(db: Db, notify: Notify) {
     dripInFlight.add(tgId);
     try {
       const sent = await sendTestFunds(u.account as Address);
-      if (sent.wqms === 0n && sent.usdc === 0n) throw new UserError('Our test-fund reserve is being refilled. Please try again later.');
+      if (sent.wqms === 0n && sent.usdc === 0n) throw new UserError('Our test-fund tap is being refilled. Try again in a little while.');
       db.markDripped(tgId);
       return { wqms: sent.wqms.toString(), usdc: sent.usdc.toString() };
     } finally {
@@ -227,7 +227,7 @@ export function createService(db: Db, notify: Notify) {
     try {
       safety = await checkToken(other, { fresh });
     } catch {
-      throw new UserError('That is not a token Qalibre can read.');
+      throw new UserError('That address doesn\'t look like a token on QMS. Check it and paste it again.');
     }
     if (!safety.tradable) throw new UserError(safety.reason ?? 'This token cannot be traded safely.');
   }
@@ -309,7 +309,7 @@ export function createService(db: Db, notify: Notify) {
       tokenInfo(sellToken),
     ]);
     const sym = sellInfo.symbol;
-    if (!active) throw new UserError('Trading permission is off. Turn it on in your Wallet.');
+    if (!active) throw new UserError('Trading is turned off for your wallet. Turn it on in your Wallet, then try again.');
     const [perTrade, perDay] = limit as readonly [bigint, bigint];
     // A token the owner has not approved needs a one-time approval signed on their phone.
     if (!buyAllowed) throw new NeedsApproval(buyToken);
@@ -318,9 +318,9 @@ export function createService(db: Db, notify: Notify) {
     const native = sellToken.toLowerCase() === TOKENS.WQMS.toLowerCase() ? await client.getBalance({ address: account }) : 0n;
     const spendable = bal + native;
     if (sellAmount > spendable) throw new UserError(`You don't have enough ${sym}.`);
-    if (sellAmount > perTrade) throw new UserError('That is above your per-trade limit.');
+    if (sellAmount > perTrade) throw new UserError('That\'s more than your per-trade limit. You can raise it in your Wallet.');
     const reserved = db.pendingOrders().filter((o) => o.tg_id === tgId && o.sell_token.toLowerCase() === sellToken.toLowerCase()).reduce((s, o) => s + BigInt(o.sell_amount), 0n);
-    if (spent + reserved + sellAmount > perDay) throw new UserError('That would pass your daily limit.');
+    if (spent + reserved + sellAmount > perDay) throw new UserError('That would go over today\'s limit. It resets every 24 hours, or you can raise it in your Wallet.');
     if (reserved + sellAmount > spendable) throw new UserError(`You already have pending orders using this ${sym}.`);
 
     const q = await quote(sellToken, buyToken, sellAmount);
@@ -440,7 +440,7 @@ export function createService(db: Db, notify: Notify) {
       for (const o of db.pendingOrders()) {
         if (o.valid_to < now + 20) {
           db.markStatus(o.id, 'expired', 'Not filled in time. Nothing was traded.');
-          await notify(o.tg_id, "<b>Order not filled.</b>\nWe couldn't fill it within your price limit in time, so nothing was traded. Your balance is unchanged.", { order: o, kind: 'expired' });
+          await notify(o.tg_id, "<b>That trade didn't fill in time.</b>\nWe couldn't get it within your price limit, so nothing was traded and your balance hasn't changed.", { order: o, kind: 'expired' });
         }
       }
       const groups = new Map<string, OrderRow[]>();
@@ -477,7 +477,7 @@ export function createService(db: Db, notify: Notify) {
                   if (e instanceof DroppedByReorg) {
                     // The settlement never happened on-chain; settle these orders again and say so plainly.
                     for (const row of db.requeueByTx(r.hash)) {
-                      void notify(row.tg_id, '<b>Re-settling your order.</b>\nThe QMS network reorganized the block with your trade, so it did not complete. It is back in the queue at your original price limit. Your balance was never at risk.', { order: row, kind: 'requeued' });
+                      void notify(row.tg_id, '<b>Retrying your trade.</b>\nThe QMS network rolled back the block it landed in, so it didn\'t happen. It\'s back in line at the same price limit. Your money never left your wallet.', { order: row, kind: 'requeued' });
                     }
                   }
                   console.error(`settlement ${r.hash} did not reach finality:`, (e as Error).message);
@@ -496,7 +496,7 @@ export function createService(db: Db, notify: Notify) {
             for (const b of blockers) {
               db.markStatus(b.id, 'failed', 'This order could not be settled, so nothing was traded. Your balance is unchanged.');
               const row = db.getOrder(b.id);
-              if (row) void notify(row.tg_id, '<b>Order not filled.</b>\nIt could not be settled, so nothing was traded. Your balance is unchanged. Check your trading permission and limits, then try again.', { order: row, kind: 'failed' });
+              if (row) void notify(row.tg_id, '<b>That trade didn\'t go through.</b>\nNothing was traded and your balance hasn\'t changed. It\'s usually a limit, or trading being off. Check your Wallet, then try again.', { order: row, kind: 'failed' });
             }
             const ids = new Set(blockers.map((b) => b.id));
             queue = queue.filter((q) => !ids.has(q.id));
@@ -520,12 +520,12 @@ export function createService(db: Db, notify: Notify) {
     const pct = direct > 0n ? Number(((priced - direct) * 1_000_000n) / direct) / 10_000 : 0;
     const fmt = (v: bigint) => trimUnits(v, buy.decimals);
     return [
-      `<b>Filled. +${fmt(got)} ${buy.symbol}</b>`,
+      `<b>Done. +${fmt(got)} ${buy.symbol}</b>`,
       pct > 0
-        ? `A ${pct.toFixed(2)}% better price than a direct swap on QWAP, which would have paid ${fmt(direct)}.`
-        : `The same as a direct swap on QWAP, with no Qalibre fee.`,
-      networkFee > 0n ? `Network fee at cost: ${trimUnits(networkFee, buy.decimals, 8)} ${buy.symbol}.` : '',
-      `<a href="https://testnet.qmsscan.io/tx/${o.tx_hash}">View the settlement on QMS Explorer</a>`,
+        ? `You got ${pct.toFixed(2)}% more than a direct swap on QWAP, which would have paid ${fmt(direct)}.`
+        : `No better match was in this batch, so you got QWAP's own price and paid Qalibre nothing.`,
+      networkFee > 0n ? `Network fee, at cost: ${trimUnits(networkFee, buy.decimals, 8)} ${buy.symbol}` : '',
+      `<a href="https://testnet.qmsscan.io/tx/${o.tx_hash}">See it on QMS Explorer</a>`,
     ]
       .filter(Boolean)
       .join('\n');

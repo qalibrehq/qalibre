@@ -12,6 +12,7 @@ import { Send } from './screens/Send';
 import { Approve } from './screens/Approve';
 import { Profile } from './screens/Profile';
 import { Wordmark } from './ui/Brand';
+import { Splash } from './ui/Splash';
 
 type Route = { name: 'home' } | { name: 'trade'; side: 'buy' | 'sell' } | { name: 'receipt'; orderId: string } | { name: 'activity' } | { name: 'control' } | { name: 'limits' } | { name: 'send' } | { name: 'approve'; token: string } | { name: 'profile' };
 export type Nav = (name: Route['name'], params?: Record<string, string>) => void;
@@ -30,6 +31,28 @@ export function App() {
     return { name: 'home' };
   });
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  // The opening moment plays once per session, and never holds the app back longer than it lasts (1.3 s).
+  const [intro, setIntro] = useState(() => {
+    try {
+      return !sessionStorage.getItem('qalibre.intro');
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    if (!intro) return;
+    // Development only: ?preview&splash holds the opening on screen for design review.
+    if (import.meta.env.DEV && new URLSearchParams(location.search).has('splash')) return;
+    const t = window.setTimeout(() => {
+      setIntro(false);
+      try {
+        sessionStorage.setItem('qalibre.intro', '1');
+      } catch {
+        /* private mode */
+      }
+    }, 1300);
+    return () => clearTimeout(t);
+  }, [intro]);
 
   const refresh = useCallback(async () => {
     try {
@@ -93,12 +116,8 @@ export function App() {
     );
   }
 
-  if (!me || vault === null) {
-    return (
-      <div className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
-        <Wordmark width={120} />
-      </div>
-    );
+  if (intro || !me || vault === null) {
+    return <div className="screen"><Splash /></div>;
   }
 
   if (!me.registered) {

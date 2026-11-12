@@ -97,7 +97,7 @@ export async function resolveToken(input: string): Promise<{ token?: TokenInfo; 
     try {
       return { token: await tokenInfo(getAddress(m[0]) as Address) };
     } catch (e) {
-      return { error: (e as Error).message === 'not_a_contract' ? 'There is no contract at that address on QMS.' : 'That address is not a token Qalibre can read.' };
+      return { error: (e as Error).message === 'not_a_contract' ? 'There is no contract at that address on QMS.' : 'That address doesn\'t look like a token on QMS. Check it and paste it again.' };
     }
   }
   const sym = raw.toUpperCase();

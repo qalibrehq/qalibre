@@ -1,4 +1,9 @@
 /* Qalibre · Paper & Ink. One system, used everywhere. */
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/Inter-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/Inter-Medium.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/Inter-SemiBold.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/Inter-Bold.woff2') format('woff2'); }
+
 :root {
   --paper: #f6f4ef;
   --paper-2: #ece8df;
@@ -17,7 +22,7 @@
   --gutter: 28px;
   --radius: 12px;
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --ease: cubic-bezier(0.3, 0.6, 0.1, 1);
 
   color-scheme: light;
@@ -107,7 +112,29 @@ button.item:active { background: var(--paper); }
 .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
 .icon-btn { width: 40px; height: 40px; margin-left: -10px; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 
-.fade-in { animation: fadeIn 0.4s var(--ease) both; }
+.fade-in { animation: screenIn 0.42s var(--ease) both; }
+@keyframes screenIn { from { opacity: 0; transform: translateY(10px) scale(0.995); } to { opacity: 1; transform: none; } }
+
+/* Lists arrive in a quick cascade. */
+.fade-in .surface > .item, .fade-in .actions > .action { animation: rise 0.5s var(--ease) both; }
+.fade-in .surface > .item:nth-child(2), .fade-in .actions > .action:nth-child(2) { animation-delay: 45ms; }
+.fade-in .surface > .item:nth-child(3), .fade-in .actions > .action:nth-child(3) { animation-delay: 90ms; }
+.fade-in .surface > .item:nth-child(4), .fade-in .actions > .action:nth-child(4) { animation-delay: 135ms; }
+.fade-in .surface > .item:nth-child(n + 5) { animation-delay: 180ms; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* Opening: the wordmark draws itself; the brass ring drops onto the i. */
+.splash { flex: 1; min-height: 70vh; display: flex; align-items: center; justify-content: center; }
+.splash-stroke { stroke-dasharray: 1; stroke-dashoffset: 1; animation: stroke 0.62s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+@keyframes stroke { to { stroke-dashoffset: 0; } }
+.splash-ring { transform-box: fill-box; transform-origin: center; opacity: 0; animation: ringDrop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.72s forwards; }
+@keyframes ringDrop { 0% { opacity: 0; transform: translateY(-26px) scale(0.6); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; } }
+.app-in { animation: appIn 0.55s var(--ease) both; }
+@keyframes appIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+/* Loading placeholders. */
+.shimmer { display: block; background: linear-gradient(90deg, var(--paper-2) 0%, var(--paper) 50%, var(--paper-2) 100%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes draw { from { stroke-dashoffset: 300; } to { stroke-dashoffset: 0; } }
 @keyframes jewelIn { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: scale(1); } }
@@ -132,6 +159,8 @@ input.pin:focus { outline: 2px solid var(--green); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .draw { stroke-dashoffset: 0; }
+  .splash-stroke { stroke-dashoffset: 0; }
+  .splash-ring { opacity: 1; }
 }
 
 .key:active { background: var(--paper-2) !important; }

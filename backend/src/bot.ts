@@ -203,7 +203,7 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
       return void (await bot.sendMessage(id, h.text, { reply_markup: { inline_keyboard: h.kb } }));
     }
     // Anything else: a short pointer, never a wall of commands.
-    await bot.sendMessage(id, 'Paste a token address to check it, or open Home.', { reply_markup: { inline_keyboard: [[{ text: 'Home', callback_data: 'm:home' }]] } });
+    await bot.sendMessage(id, 'Paste any token address and I\'ll check it for you. Or open Home.', { reply_markup: { inline_keyboard: [[{ text: 'Home', callback_data: 'm:home' }]] } });
   }
 
   (async () => {
