@@ -7,7 +7,8 @@ export const TOKENS = {
 export type Sym = keyof typeof TOKENS;
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  /** `code` names a refusal the app can act on (needs_approval, high_impact); `data` carries its details. */
+  constructor(message: string, readonly status: number, readonly code?: string, readonly data: Record<string, unknown> = {}) {
     super(message);
   }
 }
@@ -23,7 +24,10 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError('No connection. Check your internet and try again.', 0);
   }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError((body as { error?: string }).error ?? 'Something went wrong. Please try again.', res.status);
+  if (!res.ok) {
+    const b = body as { error?: string; code?: string } & Record<string, unknown>;
+    throw new ApiError(b.error ?? 'Something went wrong. Please try again.', res.status, b.code, b);
+  }
   return body as T;
 }
 
@@ -92,15 +96,12 @@ export const api = {
   prepare: (owner: string) => call<{ setupHash: `0x${string}`; account: string; limits: { token: string; perTrade: string; perDay: string }[]; validUntil: number }>('/api/register/prepare', { method: 'POST', body: JSON.stringify({ owner }) }),
   complete: (signature: string) => call<{ account: string }>('/api/register/complete', { method: 'POST', body: JSON.stringify({ signature }) }),
   quote: (sell: string, buy: string, amount: bigint) => call<Quote>(`/api/quote?sell=${sell}&buy=${buy}&amount=${amount}`),
-  order: (sell: string, buy: string, amount: bigint, mode: 'instant' | 'best') => call<{ id: string; minOut: string; likely: string; direct: string; nextBatchInMs: number }>('/api/orders', { method: 'POST', body: JSON.stringify({ sell, buy, amount: amount.toString(), mode }) }),
+  order: (sell: string, buy: string, amount: bigint, mode: 'instant' | 'best', acceptImpact = false) => call<{ id: string; minOut: string; likely: string; direct: string; nextBatchInMs: number }>('/api/orders', { method: 'POST', body: JSON.stringify({ sell, buy, amount: amount.toString(), mode, acceptImpact }) }),
   orders: () => call<{ orders: OrderRow[] }>('/api/orders'),
   testFunds: () => call<{ wqms: string; usdc: string }>('/api/test-funds', { method: 'POST' }),
   orderById: (id: string) => call<OrderRow>(`/api/orders/${id}`),
 };
 
-export function tokenBy(address: string) {
-  return Object.values(TOKENS).find((t) => t.address.toLowerCase() === address.toLowerCase()) ?? TOKENS.USDC;
-}
 
 /** Parse a decimal string ("12.5") into base units. */
 export function toUnits(value: string, decimals: number): bigint {
@@ -120,3 +121,22 @@ export function fromUnits(v: bigint | string, decimals: number, max = 4): string
 }
 
 export const usd = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** A token the app can show: address, symbol, decimals. */
+export interface TokenRef {
+  address: string;
+  symbol: string;
+  decimals: number;
+}
+
+/**
+ * Every token this user may see: QMS, USDC, and the tokens they hold from chat trading. Unknown addresses get a
+ * short-address label and 18 decimals rather than being mistaken for a known token.
+ */
+export function tokenMeta(me: Me, extra: TokenRef[] = []) {
+  const m = new Map<string, TokenRef>();
+  for (const t of [TOKENS.QMS, TOKENS.USDC]) m.set(t.address.toLowerCase(), t);
+  for (const p of me.positions ?? []) m.set(p.token.toLowerCase(), { address: p.token, symbol: p.symbol, decimals: p.decimals });
+  for (const t of extra) m.set(t.address.toLowerCase(), t);
+  return (a: string): TokenRef => m.get(a.toLowerCase()) ?? { address: a, symbol: `${a.slice(0, 6)}…`, decimals: 18 };
+}

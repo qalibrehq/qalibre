@@ -7,7 +7,7 @@ import type { Nav } from '../App';
 
 const STATUS: Record<OrderRow['status'], { text: string; color: string }> = {
   pending: { text: 'In batch', color: 'var(--graphite)' },
-  filled: { text: 'Filled', color: 'var(--green)' },
+  filled: { text: 'Filled', color: 'var(--green-text)' },
   expired: { text: 'Not filled', color: 'var(--caution)' },
   failed: { text: 'Not filled', color: 'var(--caution)' },
 };

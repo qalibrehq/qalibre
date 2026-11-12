@@ -6,7 +6,7 @@ import { isAddress, isHex, type Address, type Hex } from 'viem';
 import { config } from './config.js';
 import type { Db } from './db.js';
 import { verifyInitData, type TelegramUser } from './telegram.js';
-import { UserError, type Service } from './service.js';
+import { HighImpact, NeedsApproval, UserError, type Service } from './service.js';
 import type { OwnerOps } from './ownerops.js';
 import { checkToken } from './tokens.js';
 
@@ -196,7 +196,7 @@ export function startApi(db: Db, svc: Service, owner: OwnerOps, extras: ApiExtra
         const body = await readJson(req);
         if (typeof body.sell !== 'string' || !isAddress(body.sell) || typeof body.buy !== 'string' || !isAddress(body.buy)) throw new UserError('Invalid tokens.');
         const mode = body.mode === 'instant' ? 'instant' : 'best';
-        return send(res, 200, await svc.placeOrder(user.id, body.sell as Address, body.buy as Address, parseAmount(body.amount), mode), origin);
+        return send(res, 200, await svc.placeOrder(user.id, body.sell as Address, body.buy as Address, parseAmount(body.amount), mode, { acceptImpact: body.acceptImpact === true }), origin);
       }
       if (req.method === 'GET' && url.pathname === '/api/orders') {
         return send(res, 200, { orders: db.userOrders(user.id).map(({ signature: _s, nonce: _n, ...o }) => o) }, origin);
@@ -210,6 +210,9 @@ export function startApi(db: Db, svc: Service, owner: OwnerOps, extras: ApiExtra
       }
       return send(res, 404, { error: 'Not found.' }, origin);
     } catch (e) {
+      // Refusals the app can act on carry a code: approve the token, or confirm a large price impact.
+      if (e instanceof NeedsApproval) return send(res, 400, { error: e.message, code: 'needs_approval', token: e.token }, origin);
+      if (e instanceof HighImpact) return send(res, 400, { error: e.message, code: 'high_impact', impactBps: e.impactBps }, origin);
       if (e instanceof UserError) return send(res, 400, { error: e.message }, origin);
       console.error('api error', e);
       return send(res, 500, { error: 'Something went wrong on our side. Your funds are safe; please try again.' }, origin);

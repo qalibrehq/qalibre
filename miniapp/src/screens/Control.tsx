@@ -169,9 +169,9 @@ export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: 
         <span className="label" style={{ fontSize: 22, letterSpacing: '-0.02em' }}>Wallet</span>
       </div>
 
-      <div style={{ marginTop: 18, borderRadius: 22, background: 'var(--green)', color: 'var(--paper)', padding: '22px 22px 20px', display: 'flex', flexDirection: 'column', gap: 26 }}>
+      <div style={{ marginTop: 18, borderRadius: 22, background: 'var(--green)', color: 'var(--on-green)', padding: '22px 22px 20px', display: 'flex', flexDirection: 'column', gap: 26 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Wordmark width={80} color="var(--paper)" hole="var(--green)" />
+          <Wordmark width={80} color="var(--on-green)" hole="var(--green)" />
           <span style={{ fontSize: 13, opacity: 0.75 }}>QMS testnet</span>
         </div>
         <div>
@@ -179,9 +179,9 @@ export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: 
           <p className="num" style={{ margin: '6px 0 0', fontSize: 22, fontWeight: 600, letterSpacing: '-0.01em' }}>{short(me.account)}</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-          <button onClick={copyAddress} style={{ height: 42, borderRadius: 12, border: 0, background: 'var(--paper)', color: 'var(--green)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Copy</button>
-          <button onClick={() => nav('send')} style={{ height: 42, borderRadius: 12, border: '1px solid rgba(246,244,239,0.35)', background: 'transparent', color: 'var(--paper)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Send</button>
-          <button onClick={() => me.account && openLink(`https://testnet.qmsscan.io/address/${me.account}`)} style={{ height: 42, borderRadius: 12, border: '1px solid rgba(246,244,239,0.35)', background: 'transparent', color: 'var(--paper)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Explorer</button>
+          <button onClick={copyAddress} style={{ height: 42, borderRadius: 12, border: 0, background: 'var(--on-green)', color: '#0F4D3A', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Copy</button>
+          <button onClick={() => nav('send')} style={{ height: 42, borderRadius: 12, border: '1px solid rgba(246,244,239,0.35)', background: 'transparent', color: 'var(--on-green)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Send</button>
+          <button onClick={() => me.account && openLink(`https://testnet.qmsscan.io/address/${me.account}`)} style={{ height: 42, borderRadius: 12, border: '1px solid rgba(246,244,239,0.35)', background: 'transparent', color: 'var(--on-green)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Explorer</button>
         </div>
       </div>
 

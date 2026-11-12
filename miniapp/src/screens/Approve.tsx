@@ -5,6 +5,7 @@ import { actions, runOwnerAction } from '../owner';
 import { haptic, openLink, tg } from '../tg';
 import { Back } from '../ui/Brand';
 import { PinSheet } from '../ui/PinSheet';
+import { Done } from './Trade';
 import type { Nav } from '../App';
 
 const tone: Record<string, string> = { danger: 'var(--danger)', caution: 'var(--caution)', unknown: 'var(--graphite)', pass: 'var(--green)' };
@@ -15,7 +16,7 @@ const verdictLabel: Record<Safety['verdict'], string> = { ok: 'Low risk', cautio
  * Signs one action on this phone: allow Qalibre to buy this token, and to sell it back to QMS.
  * The safety check is shown again here, so the decision is made with the facts in front of the user.
  */
-export function Approve({ me, token, nav }: { me: Me; token: string; nav: Nav }) {
+export function Approve({ me, token, back, nav }: { me: Me; token: string; back?: 'trade'; nav: Nav }) {
   const [s, setS] = useState<Safety | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<'review' | 'sign' | 'done'>('review');
@@ -43,8 +44,9 @@ export function Approve({ me, token, nav }: { me: Me; token: string; nav: Nav })
           setTx(hash);
           haptic.success();
           setStep('done');
-          // The chat card updates itself on the server; return the user to it after a beat.
-          window.setTimeout(() => tg?.close?.(), 1600);
+          // From the app: straight back to the trade. From chat: the card there updates itself; return to it.
+          const backToTrade = () => nav('trade', { side: 'buy', token: s.token.address, symbol: s.token.symbol, decimals: String(s.token.decimals) });
+          window.setTimeout(() => (back === 'trade' ? backToTrade() : tg?.close?.()), 1400);
         }}
       />
     );
@@ -54,12 +56,12 @@ export function Approve({ me, token, nav }: { me: Me; token: string; nav: Nav })
     return (
       <div className="screen fade-in">
         <div style={{ marginTop: 'auto', marginBottom: 'auto', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-          <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="21" fill="var(--green)" /><path d="M14 22.5 L19.5 28 L30 17" fill="none" stroke="var(--paper)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <Done />
           <p style={{ margin: 0, fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em' }}>{s.token.symbol} approved</p>
-          <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.5, maxWidth: 280 }}>Taking you back to the chat. Your {s.token.symbol} card now has Buy buttons.</p>
+          <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.5, maxWidth: 280 }}>{back === 'trade' ? `Taking you back to your trade.` : `Taking you back to the chat. Your ${s.token.symbol} card now has Buy buttons.`}</p>
         </div>
         {tx && <button className="btn btn-line" style={{ marginBottom: 10 }} onClick={() => openLink(`https://testnet.qmsscan.io/tx/${tx}`)}>View on QMS Explorer</button>}
-        <button className="btn btn-ink" onClick={() => (tg?.close ? tg.close() : nav('home'))}>Back to chat</button>
+        <button className="btn btn-ink" onClick={() => (back === 'trade' ? nav('trade', { side: 'buy', token: s.token.address, symbol: s.token.symbol, decimals: String(s.token.decimals) }) : tg?.close ? tg.close() : nav('home'))}>{back === 'trade' ? 'Back to trade' : 'Back to chat'}</button>
       </div>
     );
   }
@@ -87,7 +89,7 @@ export function Approve({ me, token, nav }: { me: Me; token: string; nav: Nav })
           <p className="mono" style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--graphite)', wordBreak: 'break-all' }}>{s.token.address}</p>
 
           <div style={{ marginTop: 22, display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            <span className="num" style={{ fontSize: 34, fontWeight: 600, letterSpacing: '-0.03em', color: s.verdict === 'ok' ? 'var(--green)' : s.verdict === 'caution' ? 'var(--caution)' : 'var(--danger)' }}>{s.verdict === 'blocked' ? 'Blocked' : s.score}</span>
+            <span className="num" style={{ fontSize: 34, fontWeight: 600, letterSpacing: '-0.03em', color: s.verdict === 'ok' ? 'var(--green-text)' : s.verdict === 'caution' ? 'var(--caution)' : 'var(--danger)' }}>{s.verdict === 'blocked' ? 'Blocked' : s.score}</span>
             {s.verdict !== 'blocked' && <span className="muted" style={{ fontSize: 14 }}>/ 100 · {verdictLabel[s.verdict]}</span>}
           </div>
 

@@ -88,8 +88,8 @@ export function Send({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
       <label style={{ marginTop: 22, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: 'var(--graphite)' }}>
         Amount
         <div style={{ display: 'flex', gap: 8 }}>
-          <input inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} style={{ flex: 1, minWidth: 0, height: 54, borderRadius: 12, border: '1px solid var(--rule-strong)', background: 'var(--white)', padding: '0 14px', fontSize: 22, fontWeight: 600, fontFamily: 'var(--font)', color: 'var(--ink)' }} />
-          <button onClick={() => setAmount(token.exact !== null ? fromUnits(token.exact, token.decimals, token.decimals).replace(/,/g, '') : String(balance))} style={{ height: 54, padding: '0 16px', borderRadius: 12, border: '1px solid var(--rule-strong)', background: 'var(--white)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Max</button>
+          <input inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} style={{ flex: 1, minWidth: 0, height: 54, borderRadius: 12, border: '1px solid transparent', background: 'var(--white)', padding: '0 14px', fontSize: 22, fontWeight: 600, fontFamily: 'var(--font)', color: 'var(--ink)' }} />
+          <button onClick={() => setAmount(token.exact !== null ? fromUnits(token.exact, token.decimals, token.decimals).replace(/,/g, '') : String(balance))} style={{ height: 54, padding: '0 16px', borderRadius: 12, border: '1px solid transparent', background: 'var(--white)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Max</button>
         </div>
         <span className="num">Available {balance.toLocaleString('en-US', { maximumFractionDigits: sym === 'USDC' ? 2 : balance >= 1000 ? 0 : 4 })} {sym}</span>
       </label>
@@ -97,8 +97,8 @@ export function Send({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
       <label style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: 'var(--graphite)' }}>
         To address
         <div style={{ display: 'flex', gap: 8 }}>
-          <input placeholder="0x…" value={to} onChange={(e) => setTo(e.target.value)} spellCheck={false} autoCapitalize="off" autoCorrect="off" className="mono" style={{ flex: 1, minWidth: 0, height: 54, borderRadius: 12, border: `1px solid ${to && !toOk ? 'var(--danger)' : 'var(--rule-strong)'}`, background: 'var(--white)', padding: '0 14px', fontSize: 14, color: 'var(--ink)' }} />
-          <button onClick={paste} style={{ height: 54, padding: '0 16px', borderRadius: 12, border: '1px solid var(--rule-strong)', background: 'var(--white)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Paste</button>
+          <input placeholder="0x…" value={to} onChange={(e) => setTo(e.target.value)} spellCheck={false} autoCapitalize="off" autoCorrect="off" className="mono" style={{ flex: 1, minWidth: 0, height: 54, borderRadius: 12, border: `1px solid ${to && !toOk ? 'var(--danger)' : 'transparent'}`, background: 'var(--white)', padding: '0 14px', fontSize: 14, color: 'var(--ink)' }} />
+          <button onClick={paste} style={{ height: 54, padding: '0 16px', borderRadius: 12, border: '1px solid transparent', background: 'var(--white)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Paste</button>
         </div>
         {to && !toOk && <span style={{ color: 'var(--danger)' }}>That is not a valid address.</span>}
         {self && <span style={{ color: 'var(--caution)' }}>That is your own Qalibre wallet.</span>}

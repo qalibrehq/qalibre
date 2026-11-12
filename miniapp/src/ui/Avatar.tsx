@@ -10,7 +10,7 @@ export function Avatar({ name, size }: { name?: string | null; size: number }) {
     return <img src={src} alt="" width={size} height={size} onError={() => setFailed(true)} style={{ width: size, height: size, borderRadius: size / 2, objectFit: 'cover', display: 'block', background: 'var(--paper-2)' }} />;
   }
   return (
-    <span aria-hidden="true" style={{ width: size, height: size, borderRadius: size / 2, background: 'var(--green)', color: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: Math.round(size * 0.4), fontWeight: 600 }}>
+    <span aria-hidden="true" style={{ width: size, height: size, borderRadius: size / 2, background: 'var(--green)', color: 'var(--on-green)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: Math.round(size * 0.4), fontWeight: 600 }}>
       {initial}
     </span>
   );

@@ -3,10 +3,13 @@
  * sample data, without Telegram or the server. Production builds never run this (import.meta.env.DEV is false).
  */
 if (import.meta.env.DEV && new URLSearchParams(location.search).has('preview')) {
-  const store = new Map<string, string>([['qalibre_owner_v1', '{"v":1,"preview":true}']]);
+  const fresh = new URLSearchParams(location.search).has('new');
+  const store = new Map<string, string>(fresh ? [] : [['qalibre_owner_v1', '{"v":1,"preview":true}']]);
   (window as unknown as { Telegram: unknown }).Telegram = {
     WebApp: {
       initData: 'preview',
+      colorScheme: new URLSearchParams(location.search).has('dark') ? 'dark' : 'light',
+      onEvent() {},
       initDataUnsafe: { user: { id: 1, first_name: 'Ada' } },
       version: '8.0',
       ready() {},
@@ -64,7 +67,7 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has('preview')) 
     batch_id: 3, created_at: now - ago, updated_at: now - ago, mode: 'instant',
   });
   const routes: Record<string, unknown> = {
-    '/api/me': me,
+    '/api/me': fresh ? { registered: false } : me,
     '/api/batch': { nextBatchInMs: 0, waiting: 0, batch: 3, intervalMs: 5000, lastRunAt: 0 },
     '/api/orders': {
       orders: [
@@ -73,6 +76,11 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has('preview')) 
       ],
     },
     '/api/quote': { direct: '2960000', minOut: '2945000', likely: '2975000', waiting: 1, maxNetworkFee: '9000', impactBps: 12 },
+    '/api/token': {
+      token: { address: DOG, symbol: 'QTDOG', name: 'Qalibre Test Dog (testnet)', decimals: 18, verified: false },
+      verdict: 'high', score: 30, tradable: true, priceQms: 1.6e-7, priceUsd: 5.4e-7, liquidityUsd: 2.7, checkedAt: Date.now(),
+      findings: [{ level: 'caution', title: 'Small pool', detail: '' }, { level: 'pass', title: 'You can sell it', detail: '' }],
+    },
     '/api/stats': { savedUsd: 0.18, trades: 6, traders: 1, groups: 1, since: now - 86400, checked: 3, blocked: 2 },
   };
   const realFetch = window.fetch.bind(window);

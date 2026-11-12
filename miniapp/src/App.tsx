@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, type Me } from './api';
+import { api, ApiError, type Me, type TokenRef } from './api';
 import { inTelegram, tg } from './tg';
 import { hasVault, Onboarding } from './screens/Onboarding';
 import { Home } from './screens/Home';
@@ -14,7 +14,7 @@ import { Profile } from './screens/Profile';
 import { Wordmark } from './ui/Brand';
 import { Splash } from './ui/Splash';
 
-type Route = { name: 'home' } | { name: 'trade'; side: 'buy' | 'sell' } | { name: 'receipt'; orderId: string } | { name: 'activity' } | { name: 'control' } | { name: 'limits' } | { name: 'send' } | { name: 'approve'; token: string } | { name: 'profile' };
+type Route = { name: 'home' } | { name: 'trade'; side: 'buy' | 'sell'; token?: TokenRef } | { name: 'receipt'; orderId: string } | { name: 'activity' } | { name: 'control' } | { name: 'limits' } | { name: 'send' } | { name: 'approve'; token: string; back?: 'trade' } | { name: 'profile' };
 export type Nav = (name: Route['name'], params?: Record<string, string>) => void;
 
 export function App() {
@@ -90,9 +90,9 @@ export function App() {
 
   const nav: Nav = useCallback((name, params = {}) => {
     window.scrollTo(0, 0);
-    if (name === 'trade') setRoute({ name, side: params.side === 'sell' ? 'sell' : 'buy' });
+    if (name === 'trade') setRoute({ name, side: params.side === 'sell' ? 'sell' : 'buy', token: params.token ? { address: params.token, symbol: params.symbol ?? '', decimals: Number(params.decimals ?? 18) } : undefined });
     else if (name === 'receipt') setRoute({ name, orderId: params.orderId ?? '' });
-    else if (name === 'approve') setRoute({ name, token: params.token ?? '' });
+    else if (name === 'approve') setRoute({ name, token: params.token ?? '', back: params.back === 'trade' ? 'trade' : undefined });
     else setRoute({ name } as Route);
   }, []);
 
@@ -127,13 +127,13 @@ export function App() {
   return (
     <>
       {route.name === 'home' && <Home me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
-      {route.name === 'trade' && <Trade me={me} nav={nav} side={route.side} toast={toast} refresh={() => void refresh()} />}
-      {route.name === 'receipt' && <Receipt orderId={route.orderId} nav={nav} />}
+      {route.name === 'trade' && <Trade me={me} nav={nav} side={route.side} token={route.token} toast={toast} refresh={() => void refresh()} />}
+      {route.name === 'receipt' && <Receipt me={me} orderId={route.orderId} nav={nav} />}
       {route.name === 'activity' && <Activity me={me} nav={nav} />}
       {route.name === 'control' && <Control me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
       {route.name === 'limits' && <Limits me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
       {route.name === 'profile' && <Profile me={me} nav={nav} toast={toast} />}
-      {route.name === 'approve' && <Approve me={me} token={route.token} nav={nav} />}
+      {route.name === 'approve' && <Approve me={me} token={route.token} back={route.back} nav={nav} />}
       {route.name === 'send' && <Send me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
       {toastMsg && <div className="toast" role="alert">{toastMsg}</div>}
     </>

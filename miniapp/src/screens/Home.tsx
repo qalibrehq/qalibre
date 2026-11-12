@@ -18,7 +18,8 @@ function useCountUp(target: number, ms = 900) {
     const a = from.current;
     let raf = 0;
     const step = (now: number) => {
-      const t = Math.min(1, (now - start) / ms);
+      // The first frame can be timestamped just before start; never let progress go below zero.
+      const t = Math.min(1, Math.max(0, (now - start) / ms));
       setV(a + (target - a) * (1 - Math.pow(1 - t, 3)));
       if (t < 1) raf = requestAnimationFrame(step);
       else from.current = target;
@@ -67,8 +68,8 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
   }
 
   const holdings = [
-    ...(me.holdings ?? []).map((h) => ({ key: h.token, name: h.name, line: `${h.amount.toLocaleString('en-US', { maximumFractionDigits: h.symbol === 'USDC' ? 2 : 4 })} ${h.symbol}`, value: h.valueUsd, change: null as number | null })),
-    ...(me.positions ?? []).map((p) => ({ key: p.token, name: p.symbol, line: `${p.amount.toLocaleString('en-US', { maximumFractionDigits: p.amount >= 1000 ? 0 : 4 })} ${p.symbol}`, value: p.valueUsd, change: p.pnlPct })),
+    ...(me.holdings ?? []).map((h) => ({ key: h.token, symbol: h.symbol, decimals: h.symbol === 'USDC' ? 6 : 18, name: h.name, line: `${h.amount.toLocaleString('en-US', { maximumFractionDigits: h.symbol === 'USDC' ? 2 : 4 })} ${h.symbol}`, value: h.valueUsd, change: null as number | null })),
+    ...(me.positions ?? []).map((p) => ({ key: p.token, symbol: p.symbol, decimals: p.decimals, name: p.symbol, line: `${p.amount.toLocaleString('en-US', { maximumFractionDigits: p.amount >= 1000 ? 0 : 4 })} ${p.symbol}`, value: p.valueUsd, change: p.pnlPct })),
   ];
 
   return (
@@ -104,7 +105,7 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
       <p className="section">Holdings</p>
       <div className="surface">
         {holdings.map((h) => (
-          <div key={h.key} className="item" style={{ cursor: 'default' }}>
+          <button key={h.key} className="item" onClick={() => { haptic.select(); nav('trade', { side: h.symbol === 'USDC' ? 'sell' : 'buy', token: h.symbol === 'USDC' ? '0x9AA510295aC664A3d5A3182a3eFe959DE2B12c34' : h.key, symbol: h.symbol === 'USDC' ? 'QMS' : h.symbol, decimals: String(h.symbol === 'USDC' ? 18 : h.decimals) }); }}>
             <TokenIcon address={h.key} size={40} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <p style={{ margin: 0, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.name}</p>
@@ -113,15 +114,15 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
             <div style={{ textAlign: 'right' }}>
               <p className="num" style={{ margin: 0, fontWeight: 500 }}>${usd(h.value)}</p>
               {h.change !== null && (
-                <p className="num" style={{ margin: '2px 0 0', fontSize: 13, color: h.change >= 0 ? 'var(--green)' : 'var(--danger)' }}>{`${h.change >= 0 ? '+' : '−'}${Math.abs(h.change).toFixed(1)}%`}</p>
+                <p className="num" style={{ margin: '2px 0 0', fontSize: 13, color: h.change >= 0 ? 'var(--green-text)' : 'var(--danger)' }}>{`${h.change >= 0 ? '+' : '−'}${Math.abs(h.change).toFixed(1)}%`}</p>
               )}
             </div>
-          </div>
+          </button>
         ))}
         <TestFundsButton onDone={() => setTimeout(refresh, 1500)} toast={toast} />
       </div>
 
-      <button onClick={() => { haptic.tap(); openChat(me.bot); }} className="surface" style={{ marginTop: 14, width: '100%', border: 0, padding: '18px 18px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', cursor: 'pointer', background: 'var(--green)', color: 'var(--paper)' }}>
+      <button onClick={() => { haptic.tap(); openChat(me.bot); }} className="surface" style={{ marginTop: 14, width: '100%', border: 0, padding: '18px 18px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', cursor: 'pointer', background: 'var(--green)', color: 'var(--on-green)' }}>
         <span style={{ width: 40, height: 40, borderRadius: 20, background: 'rgba(246,244,239,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><Icon name="chat" size={20} /></span>
         <span style={{ minWidth: 0 }}>
           <span style={{ display: 'block', fontSize: 15, fontWeight: 600 }}>Trade any token from chat</span>

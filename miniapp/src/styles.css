@@ -18,6 +18,8 @@
   --jewel: #b08d57;
   --caution: #8a4b0f;
   --danger: #a33a2b;
+  --on-green: #f6f4ef;
+  --green-text: #0f4d3a;
 
   --gutter: 28px;
   --radius: 12px;
@@ -26,6 +28,24 @@
   --ease: cubic-bezier(0.3, 0.6, 0.1, 1);
 
   color-scheme: light;
+}
+
+/* Dark: follows Telegram's theme. Ink and paper trade places; green deepens for fills and brightens for text. */
+:root[data-theme='dark'] {
+  --paper: #0f1012;
+  --paper-2: #1c1e21;
+  --white: #17191c;
+  --ink: #f2f0ea;
+  --graphite: #a3a6ad;
+  --muted: #6d7077;
+  --rule: #25282c;
+  --rule-strong: #2f3236;
+  --green: #14614a;
+  --green-ink: #0f4d3a;
+  --green-text: #5fbf98;
+  --caution: #d9a15e;
+  --danger: #e5745f;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -40,7 +60,7 @@ body {
   font-feature-settings: 'cv11', 'ss01';
 }
 button { font: inherit; color: inherit; }
-a { color: var(--green); text-decoration: none; }
+a { color: var(--green-text); text-decoration: none; }
 .num { font-variant-numeric: tabular-nums; }
 .mono { font-family: var(--mono); }
 
@@ -55,7 +75,7 @@ a { color: var(--green); text-decoration: none; }
 .bar { display: flex; align-items: center; justify-content: space-between; height: 40px; }
 .label { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
 .muted { color: var(--graphite); }
-.green { color: var(--green); }
+.green { color: var(--green-text); }
 .grow { flex: 1; }
 .spacer { margin-top: auto; }
 
@@ -80,14 +100,14 @@ button.item:active { background: var(--paper); }
 .actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .action { display: flex; flex-direction: column; align-items: center; gap: 8px; border: 0; background: transparent; font-size: 13px; font-weight: 500; color: var(--ink); cursor: pointer; padding: 0; }
 .action .disc { width: 56px; height: 56px; border-radius: 28px; background: var(--white); display: flex; align-items: center; justify-content: center; transition: transform 0.12s var(--ease); }
-.action.primary .disc { background: var(--green); color: var(--paper); }
+.action.primary .disc { background: var(--green); color: var(--on-green); }
 .action:active .disc { transform: scale(0.94); }
 
 /* Bottom navigation: no rule; the active tab carries a soft pill. */
 .tabbar {
   position: sticky; bottom: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 24px calc(-1 * var(--gutter)) 0; padding: 8px var(--gutter) calc(10px + env(safe-area-inset-bottom));
-  background: linear-gradient(to bottom, rgba(246,244,239,0), var(--paper) 30%);
+  background: linear-gradient(to bottom, transparent, var(--paper) 30%);
 }
 .tab { border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; font-size: 11px; font-weight: 500; color: var(--graphite); cursor: pointer; }
 .tab .pill { width: 56px; height: 30px; border-radius: 15px; display: flex; align-items: center; justify-content: center; transition: background 0.2s var(--ease); }
@@ -95,7 +115,7 @@ button.item:active { background: var(--paper); }
 .tab[aria-current='page'] .pill { background: var(--white); }
 
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 14px; background: var(--paper-2); font-size: 13px; font-weight: 500; color: var(--ink); border: 0; cursor: pointer; }
-.pill-on { color: var(--green); font-weight: 600; }
+.pill-on { color: var(--green-text); font-weight: 600; }
 .pill-off { color: var(--danger); font-weight: 600; }
 
 .btn {
@@ -106,7 +126,7 @@ button.item:active { background: var(--paper); }
 }
 .btn:active { transform: scale(0.985); }
 .btn:disabled { opacity: 0.45; cursor: default; }
-.btn-green { background: var(--green); color: var(--paper); }
+.btn-green { background: var(--green); color: var(--on-green); }
 .btn-ink { background: var(--ink); color: var(--paper); }
 .btn-line { background: var(--white); color: var(--ink); border: 1px solid var(--rule-strong); }
 .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
@@ -166,3 +186,18 @@ input.pin:focus { outline: 2px solid var(--green); outline-offset: 1px; }
 .key:active { background: var(--paper-2) !important; }
 
 .disc-sm { width: 40px; height: 40px; border-radius: 20px; background: var(--paper); display: flex; align-items: center; justify-content: center; flex: none; color: var(--ink); }
+
+/* Bottom sheet: slides up over a dimmed screen. */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, 0.42); display: flex; align-items: flex-end; justify-content: center; animation: fadeIn 0.2s var(--ease) both; }
+.sheet {
+  width: 100%; max-width: 480px; max-height: 86vh; overflow-y: auto; overscroll-behavior: contain; background: var(--white); border-radius: 24px 24px 0 0;
+  padding: 10px var(--gutter) calc(24px + env(safe-area-inset-bottom)); animation: sheetUp 0.34s var(--ease) both;
+}
+.sheet-grip { width: 36px; height: 4px; border-radius: 2px; background: var(--rule-strong); margin: 0 auto 14px; }
+@keyframes sheetUp { from { transform: translateY(100%); } to { transform: none; } }
+
+/* Success: the disc lands with a little spring, then the check draws. */
+.done-disc { transform-box: fill-box; transform-origin: center; animation: discIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.done-check { stroke-dasharray: 1; stroke-dashoffset: 1; animation: stroke 0.4s cubic-bezier(0.65, 0, 0.35, 1) 0.32s forwards; }
+@keyframes discIn { from { transform: scale(0.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .done-check { stroke-dashoffset: 0; } }

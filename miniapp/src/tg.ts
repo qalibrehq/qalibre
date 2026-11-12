@@ -12,6 +12,8 @@ interface TgWebApp {
   openLink(url: string): void;
   openTelegramLink?(url: string): void;
   close?(): void;
+  colorScheme?: 'light' | 'dark';
+  onEvent?(event: string, cb: () => void): void;
   isVersionAtLeast?(v: string): boolean;
   HapticFeedback?: { impactOccurred(s: 'light' | 'medium' | 'rigid' | 'soft' | 'heavy'): void; notificationOccurred(t: 'success' | 'warning' | 'error'): void; selectionChanged(): void };
   CloudStorage?: {
@@ -34,10 +36,23 @@ export function initTelegram() {
   if (!tg) return;
   tg.ready();
   tg.expand();
+  applyTheme();
+  tg.onEvent?.('themeChanged', applyTheme);
   try {
-    tg.setHeaderColor('#F6F4EF');
-    tg.setBackgroundColor('#F6F4EF');
     tg.disableVerticalSwipes?.();
+  } catch {
+    /* older clients */
+  }
+}
+
+/** Light or dark, from Telegram (or the system outside Telegram); the header bar matches the page. */
+export function applyTheme() {
+  const dark = tg?.colorScheme ? tg.colorScheme === 'dark' : window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  const bg = dark ? '#0F1012' : '#F6F4EF';
+  try {
+    tg?.setHeaderColor(bg);
+    tg?.setBackgroundColor(bg);
   } catch {
     /* older clients */
   }

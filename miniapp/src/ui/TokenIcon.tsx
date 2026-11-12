@@ -20,7 +20,8 @@ export function TokenIcon({ address, size = 40 }: { address: string; size?: numb
     const qms = a === QMS;
     return (
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-        <circle cx={r} cy={r} r={r} fill={qms ? 'var(--ink)' : '#2E5C8A'} />
+        <circle cx={r} cy={r} r={r} fill={qms ? '#111214' : '#2E5C8A'} />
+        <circle cx={r} cy={r} r={r - 0.5} fill="none" stroke="var(--rule-strong)" strokeWidth="1" />
         <text x={r} y={r + size * 0.17} textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontWeight="600" fontSize={size * 0.46} fill="#F6F4EF">{qms ? 'Q' : '$'}</text>
       </svg>
     );

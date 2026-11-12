@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../api';
 import { createOwner, loadVault, unlockOwner, WrongPin } from '../wallet';
 import { haptic } from '../tg';
+import { Icon } from '../ui/Icons';
 import { Convergence, Wordmark } from '../ui/Brand';
 import { Keypad } from '../ui/Keypad';
 
@@ -71,26 +72,27 @@ export function Onboarding({ onDone, resume, upgraded = false }: { onDone: () =>
           <Wordmark width={96} />
           <span style={{ fontSize: 12 }} className="muted">QMS testnet</span>
         </div>
-        <div style={{ marginTop: 36, borderTop: '1px solid var(--rule)', borderBottom: '1px solid var(--rule)', padding: '12px 0' }}>
+        <div style={{ marginTop: 28 }}>
           <Convergence height={176} />
         </div>
-        <h1 style={{ margin: '32px 0 0', fontSize: 44, lineHeight: 1.02, fontWeight: 600, letterSpacing: '-0.04em' }}>
-          Trade together.
+        <h1 style={{ margin: '24px 0 0', fontSize: 42, lineHeight: 1.04, fontWeight: 600, letterSpacing: '-0.04em', textWrap: 'balance' } as React.CSSProperties}>
+          Trade any token on QMS.
           <br />
-          <span className="green">Pay less.</span>
+          <span className="green">Safely.</span>
         </h1>
-        <p className="muted" style={{ margin: '16px 0 0', fontSize: 16, lineHeight: 1.55 }}>
-          Qalibre matches buyers with sellers before it goes to the exchange, so you never get less than swapping directly. No saving, no fee.
+        <p className="muted" style={{ margin: '14px 0 0', fontSize: 16, lineHeight: 1.55 }}>
+          Every token is checked before you buy. Every trade gets at least QWAP’s price, and better when other traders meet you. Your wallet is yours alone.
         </p>
-        <div style={{ marginTop: 26, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', borderTop: '1px solid var(--rule)' }}>
-          {[
-            ['$0 fee', 'unless you save'],
-            ['Your keys', 'only you withdraw'],
-            ['No gas', 'network fees paid'],
-          ].map(([a, b], i) => (
-            <div key={a} style={{ padding: '14px 12px 0', paddingLeft: i === 0 ? 0 : 12, borderLeft: i === 0 ? 0 : '1px solid var(--rule)' }}>
-              <p style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{a}</p>
-              <p className="muted" style={{ margin: '4px 0 0', fontSize: 12, lineHeight: 1.4 }}>{b}</p>
+        <div style={{ marginTop: 22, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+          {([
+            ['shield', 'Scams blocked', 'checked before you buy'],
+            ['key', 'Your keys', 'only you can withdraw'],
+            ['drop', 'No gas needed', 'fees at cost, from the trade'],
+          ] as const).map(([icon, a, b]) => (
+            <div key={a} className="surface" style={{ padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <span className="green" style={{ display: 'flex' }}><Icon name={icon} size={20} /></span>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{a}</p>
+              <p className="muted" style={{ margin: 0, fontSize: 12, lineHeight: 1.4 }}>{b}</p>
             </div>
           ))}
         </div>
@@ -115,7 +117,7 @@ export function Onboarding({ onDone, resume, upgraded = false }: { onDone: () =>
           {lines.map((l, i) => (
             <div key={l} className="row" style={{ opacity: progress >= i ? 1 : 0.35, transition: 'opacity 0.3s' }}>
               <span style={{ color: 'var(--ink)' }}>{l}</span>
-              <span className="label" style={{ color: progress > i ? 'var(--green)' : 'var(--graphite)' }}>{progress > i ? 'Done' : progress === i ? 'Working' : ''}</span>
+              <span className="label" style={{ color: progress > i ? 'var(--green-text)' : 'var(--graphite)' }}>{progress > i ? 'Done' : progress === i ? 'Working' : ''}</span>
             </div>
           ))}
         </div>

@@ -68,7 +68,7 @@ export function Profile({ me, nav, toast }: { me: Me; nav: Nav; toast: (m: strin
       </div>
 
       {inv && (
-        <div style={{ marginTop: 14, borderRadius: 20, background: 'var(--green)', color: 'var(--paper)', padding: '22px 20px' }}>
+        <div style={{ marginTop: 14, borderRadius: 20, background: 'var(--green)', color: 'var(--on-green)', padding: '22px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Icon name="gift" size={20} />
             <p style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Invite friends</p>
@@ -81,8 +81,8 @@ export function Profile({ me, nav, toast }: { me: Me; nav: Nav; toast: (m: strin
             <span><b style={{ fontSize: 15 }}>{fromUnits(inv.earnedQms, 18, 4)}</b> QMS earned</span>
           </div>
           <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-            <button onClick={share} style={{ height: 44, borderRadius: 12, border: 0, background: 'var(--paper)', color: 'var(--green)', fontSize: 15, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Icon name="share" size={18} />Share link</button>
-            <button onClick={() => copyWith(inv.link, 'Invite link copied.')} style={{ height: 44, borderRadius: 12, border: '1px solid rgba(246,244,239,0.35)', background: 'transparent', color: 'var(--paper)', fontSize: 15, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Icon name="copy" size={18} />Copy</button>
+            <button onClick={share} style={{ height: 44, borderRadius: 12, border: 0, background: 'var(--on-green)', color: '#0F4D3A', fontSize: 15, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Icon name="share" size={18} />Share link</button>
+            <button onClick={() => copyWith(inv.link, 'Invite link copied.')} style={{ height: 44, borderRadius: 12, border: '1px solid rgba(246,244,239,0.35)', background: 'transparent', color: 'var(--on-green)', fontSize: 15, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Icon name="copy" size={18} />Copy</button>
           </div>
         </div>
       )}

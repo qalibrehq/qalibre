@@ -64,7 +64,7 @@ export function Limits({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (
 
       <div role="group" aria-label="Presets" style={{ marginTop: 20, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
         {(Object.keys(PRESETS) as Preset[]).map((p) => (
-          <button key={p} onClick={() => applyPreset(p)} style={{ height: 40, borderRadius: 10, border: '1px solid var(--rule-strong)', background: 'var(--white)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>{p}</button>
+          <button key={p} onClick={() => applyPreset(p)} style={{ height: 40, borderRadius: 10, border: '1px solid transparent', background: 'var(--white)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>{p}</button>
         ))}
       </div>
 
