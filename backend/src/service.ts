@@ -4,6 +4,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { config, TOKENS } from './config.js';
 import { checkToken, poolOf, qmsUsd, tokenInfo, type TokenInfo } from './tokens.js';
 import { feeQms, savedQms } from './value.js';
+import { relay, relayer } from './relayer.js';
 import { decrypt, encrypt } from './crypto.js';
 import type { Db, OrderRow } from './db.js';
 import { QalibreAccountFactoryAbi } from '../../solver/src/abi/QalibreAccountFactory.js';
@@ -46,7 +47,7 @@ export class HighImpact extends UserError {
 
 const dep = loadDeployment();
 const client = publicClient();
-const relayer = privateKeyToAccount(config.relayerKey);
+// The relayer key sends through one queue with local nonces (src/relayer.ts).
 const solver = privateKeyToAccount(config.solverKey);
 const SUPPORTED = new Set([TOKENS.WQMS.toLowerCase(), TOKENS.USDC.toLowerCase()]);
 
@@ -131,7 +132,7 @@ export function createService(db: Db, notify: Notify) {
       } catch {
         throw new UserError('Signature did not match your wallet. Please try again.');
       }
-      const hash = await walletClient(relayer).writeContract({ address: dep.accountFactory, abi: QalibreAccountFactoryAbi, functionName: 'createAccount', args: [setup, ownerSignature], account: relayer, chain: walletClient(relayer).chain });
+      const hash = await relay((w) => w.writeContract({ address: dep.accountFactory, abi: QalibreAccountFactoryAbi, functionName: 'createAccount', args: [setup, ownerSignature], account: relayer, chain: w.chain }));
       await waitForConfirmations(client, hash, 1n);
     }
     db.setAccount(tgId, account, dep.settlement);
@@ -140,15 +141,22 @@ export function createService(db: Db, notify: Notify) {
   }
 
   /** Testnet only: send a little WQMS and USDC so a user can trade. On signup, and once a day on request. */
+  /**
+   * Send the test funds. Each transfer stands alone: if one fails, the ones already sent still count, so the
+   * request is recorded and a retry can never send the same funds twice.
+   */
   async function sendTestFunds(account: Address): Promise<{ wqms: bigint; usdc: bigint }> {
-    const w = walletClient(relayer);
     const sent = { wqms: 0n, usdc: 0n };
     for (const [token, amount, key] of [[TOKENS.WQMS, config.drip.wqms, 'wqms'], [TOKENS.USDC, config.drip.usdc, 'usdc']] as const) {
-      const bal = await client.readContract({ address: token, abi: erc20Abi, functionName: 'balanceOf', args: [relayer.address] });
-      if (bal < amount) continue;
-      const h = await w.writeContract({ address: token, abi: erc20Abi, functionName: 'transfer', args: [account, amount], account: relayer, chain: w.chain });
-      await waitForConfirmations(client, h, 1n);
-      sent[key] = amount;
+      try {
+        const bal = await client.readContract({ address: token, abi: erc20Abi, functionName: 'balanceOf', args: [relayer.address] });
+        if (bal < amount) continue;
+        const h = await relay((w) => w.writeContract({ address: token, abi: erc20Abi, functionName: 'transfer', args: [account, amount], account: relayer, chain: w.chain }));
+        await waitForConfirmations(client, h, 1n);
+        sent[key] = amount;
+      } catch (e) {
+        console.error(`test funds: ${key} transfer failed`, (e as Error).message.split('\n')[0]);
+      }
     }
     return sent;
   }

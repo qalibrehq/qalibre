@@ -12,6 +12,7 @@ import { decodeFunctionData, encodeAbiParameters, parseAbi, concat, pad, numberT
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { toPackedUserOperation, type UserOperation } from 'viem/account-abstraction';
 import { config } from './config.js';
+import { relay, relayer } from './relayer.js';
 import { encrypt } from './crypto.js';
 import type { Db } from './db.js';
 import { UserError } from './service.js';
@@ -20,7 +21,7 @@ import { loadDeployment, publicClient, waitForConfirmations, walletClient } from
 
 const dep = loadDeployment() as ReturnType<typeof loadDeployment> & { paymaster: Address };
 const client = publicClient();
-const relayer = privateKeyToAccount(config.relayerKey);
+// The relayer key sends through one queue with local nonces (src/relayer.ts).
 const sponsor = privateKeyToAccount(config.sponsorKey);
 
 const PACKED = '(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)';
@@ -156,8 +157,7 @@ export function createOwnerOps(db: Db) {
       console.warn('owner op simulation failed:', (e as Error).message.split('\n')[0]);
       throw new UserError('That could not be completed. Please check your PIN and try again.');
     }
-    const w = walletClient(relayer);
-    const hash = await w.writeContract({ address: dep.entryPoint, abi: entryPointAbi, functionName: 'handleOps', args: [[packed], relayer.address], account: relayer, chain: w.chain });
+    const hash = await relay((w) => w.writeContract({ address: dep.entryPoint, abi: entryPointAbi, functionName: 'handleOps', args: [[packed], relayer.address], account: relayer, chain: w.chain }));
     const receipt = await waitForConfirmations(client, hash, 1n);
     const ok = receipt.logs.some((l) => l.address.toLowerCase() === dep.entryPoint.toLowerCase() && l.topics[0] === '0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f' && l.data.length >= 2 + 64 * 2 && BigInt('0x' + l.data.slice(2 + 64, 2 + 128)) === 1n);
     if (!ok) throw new UserError('The network rejected that action. Nothing changed.');
