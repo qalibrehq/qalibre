@@ -7,6 +7,6 @@ import { checkToken } from '../src/tokens.js';
 import { createSocial } from '../src/social.js';
 const tt = JSON.parse(readFileSync(join(ROOT, 'contracts', 'deployments', '19480-testtokens.json'), 'utf8')) as Record<string, Address>;
 const social = createSocial({ bot: null as never, db: null as never, svc: null as never, username: 'QalibreBot' });
-for (const k of ['QTDOG', 'QTHONEY', 'QTTAX']) writeFileSync(join(process.argv[2]!, `live-${k}.png`), social.safetyImage(await checkToken(tt[k]!)));
+for (const k of ['QTDOG', 'QTHONEY', 'QTTAX']) writeFileSync(join(process.argv[2]!, `live-${k}.png`), await social.safetyImage(await checkToken(tt[k]!)));
 console.log('ok');
 process.exit(0);

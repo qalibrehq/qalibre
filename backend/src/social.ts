@@ -13,10 +13,11 @@ import { randomBytes } from 'node:crypto';
 import { getAddress, type Address } from 'viem';
 import type { Db, OrderRow } from './db.js';
 import { Bot, esc } from './telegram.js';
-import { REFERRAL_DAYS, REFERRAL_SHARE_BPS, trimUnits, type Service } from './service.js';
+import { REFERRAL_DAYS, REFERRAL_SHARE_BPS, type Service } from './service.js';
 import { checkToken, tokenInfo, type Safety } from './tokens.js';
 import { fillCard, positionCard, safetyCard, savingsCard } from './cards.js';
 import { improvement } from './value.js';
+import { tokenLogo } from './logos.js';
 import { fmtSig, fmtToken } from './chat.js';
 
 const ALERT_REPEAT_SEC = 6 * 3600;
@@ -96,9 +97,9 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
     return { headline: 'Low risk', reason: 'Simulated buy and sale went through, with no hidden tax.' };
   }
 
-  function safetyImage(s: Safety): Buffer {
+  async function safetyImage(s: Safety): Promise<Buffer> {
     const h = headline(s);
-    return safetyCard({ symbol: s.token.symbol, address: s.token.address, verdict: s.verdict, score: s.score, headline: h.headline, reason: h.reason, link: shortLink });
+    return safetyCard({ symbol: s.token.symbol, address: s.token.address, logo: await tokenLogo(s.token.address), verdict: s.verdict, score: s.score, headline: h.headline, reason: h.reason, link: shortLink });
   }
 
   async function postSafety(chatId: number, token: Address, replyTo: number | undefined, auto: boolean) {
@@ -109,7 +110,7 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
     const caption = auto
       ? `<b>Careful: ${esc(s.token.symbol)} ${s.verdict === 'blocked' ? `is blocked (${esc(h.headline.toLowerCase())})` : `is high risk (${s.score}/100)`}.</b>\n${esc(h.reason)}\n<i>Checked by Qalibre with a simulated buy and sale. Nothing was spent.</i>`
       : `<b>${esc(s.token.symbol)}</b>  ${s.verdict === 'blocked' ? 'Blocked' : `${s.score}/100`}\n${esc(h.reason)}`;
-    await bot.sendPhoto(chatId, safetyImage(s), caption, {
+    await bot.sendPhoto(chatId, await safetyImage(s), caption, {
       ...(replyTo ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } } : {}),
       reply_markup: { inline_keyboard: [[{ text: s.tradable ? `Trade ${s.token.symbol} in Qalibre` : 'Check any token', url: `https://t.me/${username}?start=t_${s.token.address.slice(2)}` }]] },
     });
@@ -194,18 +195,17 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
     const [buy, sell] = await Promise.all([tokenInfo(o.buy_token as Address), tokenInfo(o.sell_token as Address)]);
     const direct = BigInt(o.direct_quote ?? '0');
     const pct = direct > 0n ? Number((improvement(o) * 1_000_000n) / direct) / 10_000 : 0;
-    const fee = BigInt(o.fee ?? '0');
-    const batch = o.batch_id ? db.getBatch(o.batch_id) : undefined;
+    // Selling a token back to QMS reads as "Sold"; everything else is a purchase of the token received.
+    const sold = !sell.verified && buy.verified;
+    const subject = sold ? sell : buy;
     const png = fillCard({
-      // Selling a token back to QMS reads as "Sold"; everything else is a purchase of the token received.
-      side: !sell.verified && buy.verified ? 'Sold' : 'Bought',
+      side: sold ? 'Sold' : 'Bought',
+      token: { symbol: subject.symbol, address: subject.address, logo: await tokenLogo(subject.address) },
       got: fmtToken(BigInt(o.buy_amount!), buy.decimals),
       gotSymbol: buy.symbol,
       paid: fmtToken(BigInt(o.sell_amount), sell.decimals),
       paidSymbol: sell.symbol,
       vsDirectPct: pct,
-      feePaid: fee > 0n ? `${trimUnits(fee, buy.decimals, 6)} ${buy.symbol}` : 'None',
-      block: batch?.block ? batch.block.toLocaleString('en-US') : '-',
       link: shortLink,
     });
     await sendShare(tgId, png, pct > 0.0005 ? `Got ${pct.toFixed(2)}% more than a direct swap with Qalibre.` : 'Traded on QMS with Qalibre: never worse than a direct swap.');
@@ -214,7 +214,7 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
   async function sharePosition(tgId: number, token: Address) {
     const p = (await svc.positions(tgId)).find((x) => x.token.address.toLowerCase() === token.toLowerCase());
     if (!p || p.pnlPct === null || p.costQms === null) return void (await bot.sendMessage(tgId, 'There is no position with a known cost to share for this token.'));
-    const png = positionCard({ symbol: p.token.symbol, pnlPct: p.pnlPct, held: fmtToken(p.balance, p.token.decimals), cost: fmtSig(Number(p.costQms) / 1e18), value: fmtSig(Number(p.exitQms) / 1e18), profit: `${(p.pnlQms ?? 0n) >= 0n ? '+' : ''}${fmtSig(Number(p.pnlQms ?? 0n) / 1e18)} QMS`, link: shortLink });
+    const png = positionCard({ symbol: p.token.symbol, pnlPct: p.pnlPct, held: fmtToken(p.balance, p.token.decimals), cost: fmtSig(Number(p.costQms) / 1e18), value: fmtSig(Number(p.exitQms) / 1e18), token: { symbol: p.token.symbol, address: p.token.address, logo: await tokenLogo(p.token.address) }, link: shortLink });
     await sendShare(tgId, png, `${p.pnlPct >= 0 ? '+' : ''}${p.pnlPct.toFixed(1)}% on ${p.token.symbol}, traded with Qalibre.`);
   }
 
