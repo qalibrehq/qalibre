@@ -110,10 +110,14 @@ export async function resolveToken(input: string): Promise<{ token?: TokenInfo; 
 // Prices
 // ---------------------------------------------------------------------------------------------
 
+let usdCache = { at: 0, v: 0 };
+/** USD per QMS from the QMS/USDC pool. Used for display only, so a 5-second cache is fine. */
 export async function qmsUsd(): Promise<number> {
+  if (Date.now() - usdCache.at < 5_000) return usdCache.v;
   // readReserves orients by argument order: a = WQMS reserve, b = USDC reserve.
   const r = await readReserves(client, dep.qwapRouter, TOKENS.WQMS, TOKENS.USDC);
-  return Number(r.b) / 1e6 / (Number(r.a) / 1e18);
+  usdCache = { at: Date.now(), v: Number(r.b) / 1e6 / (Number(r.a) / 1e18) };
+  return usdCache.v;
 }
 
 /** Token price in QMS from its QMS pool, and the QMS side of the pool. */
@@ -196,93 +200,91 @@ export async function checkToken(address: Address, opts: { fresh?: boolean } = {
     return s;
   }
 
-  const findings: Finding[] = [];
-  let score = 100;
-  let blocked: string | undefined;
+  // The four checks are independent, so they run in parallel; the verdict's precedence is applied after.
+  type Part = { findings: Finding[]; delta: number; blocked?: string };
 
-  // Pool
-  let priceQms = 0;
-  let liquidityUsd = 0;
-  try {
-    const pool = await poolOf(token);
-    priceQms = pool.priceQms;
-    liquidityUsd = (Number(pool.qmsReserve) / 1e18) * usdPerQms * 2;
-    if (liquidityUsd < 1_000) {
-      findings.push({ level: 'caution', title: 'Small pool', detail: `About $${Math.round(liquidityUsd).toLocaleString('en-US')} available to trade. Even small trades move the price.` });
-      score -= 20;
-    } else {
-      findings.push({ level: 'pass', title: 'Pool size', detail: `About $${Math.round(liquidityUsd).toLocaleString('en-US')} available to trade.` });
+  const poolPart = async (): Promise<Part & { priceQms: number; liquidityUsd: number }> => {
+    try {
+      const pool = await poolOf(token);
+      const liquidityUsd = (Number(pool.qmsReserve) / 1e18) * usdPerQms * 2;
+      const usd = `$${Math.round(liquidityUsd).toLocaleString('en-US')}`;
+      return liquidityUsd < 1_000
+        ? { priceQms: pool.priceQms, liquidityUsd, delta: -20, findings: [{ level: 'caution', title: 'Small pool', detail: `About ${usd} available to trade. Even small trades move the price.` }] }
+        : { priceQms: pool.priceQms, liquidityUsd, delta: 0, findings: [{ level: 'pass', title: 'Pool size', detail: `About ${usd} available to trade.` }] };
+    } catch {
+      return { priceQms: 0, liquidityUsd: 0, delta: 0, blocked: 'This token has no QWAP pool against QMS, so Qalibre cannot trade it.', findings: [{ level: 'danger', title: 'No pool against QMS', detail: 'There is nowhere to trade it.' }] };
     }
-  } catch {
-    blocked = 'This token has no QWAP pool against QMS, so Qalibre cannot trade it.';
-    findings.push({ level: 'danger', title: 'No pool against QMS', detail: 'There is nowhere to trade it.' });
-  }
+  };
 
-  // Simulated buy and sell
-  if (!blocked) {
+  const probePart = async (): Promise<Part> => {
     try {
       const amount = 10n ** 16n + BigInt(Math.floor(Math.random() * 1e15)); // ~0.01 QMS, randomized
       const p = await probe(token.address, amount);
-      if (!p.buyOk) {
-        blocked = 'A simulated purchase failed, so this token cannot be bought right now.';
-        findings.push({ level: 'danger', title: 'Buying fails', detail: 'A simulated purchase did not go through.' });
-      } else if (!p.sellOk) {
-        blocked = 'You could buy this token but not sell it. This is a honeypot.';
-        findings.push({ level: 'danger', title: 'You cannot sell it', detail: 'A simulated sale was blocked. This is how honeypot scams work.' });
-      } else if (p.buyTaxBps > 50 || p.sellTaxBps > 50) {
-        blocked = `This token takes a hidden tax (about ${(p.buyTaxBps / 100).toFixed(0)}% to buy, ${(p.sellTaxBps / 100).toFixed(0)}% to sell). Qalibre does not trade taxed tokens yet.`;
-        findings.push({ level: 'danger', title: 'Hidden transfer tax', detail: `About ${(p.buyTaxBps / 100).toFixed(1)}% on buys and ${(p.sellTaxBps / 100).toFixed(1)}% on sells.` });
-      } else {
-        findings.push({ level: 'pass', title: 'You can sell it', detail: 'A simulated buy and sale both went through, with no hidden tax.' });
+      if (!p.buyOk) return { delta: 0, blocked: 'A simulated purchase failed, so this token cannot be bought right now.', findings: [{ level: 'danger', title: 'Buying fails', detail: 'A simulated purchase did not go through.' }] };
+      if (!p.sellOk) return { delta: 0, blocked: 'You could buy this token but not sell it. This is a honeypot.', findings: [{ level: 'danger', title: 'You cannot sell it', detail: 'A simulated sale was blocked. This is how honeypot scams work.' }] };
+      if (p.buyTaxBps > 50 || p.sellTaxBps > 50) {
+        return {
+          delta: 0,
+          blocked: `This token takes a hidden tax (about ${(p.buyTaxBps / 100).toFixed(0)}% to buy, ${(p.sellTaxBps / 100).toFixed(0)}% to sell). Qalibre does not trade taxed tokens yet.`,
+          findings: [{ level: 'danger', title: 'Hidden transfer tax', detail: `About ${(p.buyTaxBps / 100).toFixed(1)}% on buys and ${(p.sellTaxBps / 100).toFixed(1)}% on sells.` }],
+        };
       }
+      return { delta: 0, findings: [{ level: 'pass', title: 'You can sell it', detail: 'A simulated buy and sale both went through, with no hidden tax.' }] };
     } catch {
-      findings.push({ level: 'unknown', title: 'Sale could not be simulated', detail: 'We could not test selling this token right now.' });
-      score -= 25;
+      return { delta: -25, findings: [{ level: 'unknown', title: 'Sale could not be simulated', detail: 'We could not test selling this token right now.' }] };
     }
-  }
+  };
 
-  // Code: creator powers and upgradeability
-  try {
-    const code = (await client.getCode({ address: token.address })) ?? '0x';
-    const seen = new Set<string>();
-    for (const p of POWERS) {
-      if (code.includes('63' + p.sel) && !seen.has(p.title)) {
-        seen.add(p.title);
-        findings.push({ level: 'caution', title: p.title, detail: p.detail });
-        score -= p.weight;
-      }
-    }
-    const impl = await client.getStorageAt({ address: token.address, slot: EIP1967_IMPL });
-    if (impl && BigInt(impl) !== 0n) {
-      findings.push({ level: 'caution', title: 'The code can be changed', detail: 'This token is upgradeable, so its rules can change after you buy.' });
-      score -= 15;
-    }
+  const codePart = async (): Promise<Part> => {
+    const findings: Finding[] = [];
+    let delta = 0;
     try {
-      const owner = await client.readContract({ address: token.address, abi: erc20Meta, functionName: 'owner' });
-      if (BigInt(owner) === 0n || owner.toLowerCase() === '0x000000000000000000000000000000000000dead') {
-        findings.push({ level: 'pass', title: 'No owner', detail: 'The creator has given up control of the contract.' });
-      } else if (seen.size > 0) {
-        findings.push({ level: 'caution', title: 'The creator still has control', detail: 'The powers above are still active.' });
-        score -= 5;
+      const [code, impl, owner] = await Promise.all([
+        client.getCode({ address: token.address }),
+        client.getStorageAt({ address: token.address, slot: EIP1967_IMPL }),
+        client.readContract({ address: token.address, abi: erc20Meta, functionName: 'owner' }).catch(() => null), // no owner() is fine
+      ]);
+      const seen = new Set<string>();
+      for (const p of POWERS) {
+        if ((code ?? '0x').includes('63' + p.sel) && !seen.has(p.title)) {
+          seen.add(p.title);
+          findings.push({ level: 'caution', title: p.title, detail: p.detail });
+          delta -= p.weight;
+        }
+      }
+      if (impl && BigInt(impl) !== 0n) {
+        findings.push({ level: 'caution', title: 'The code can be changed', detail: 'This token is upgradeable, so its rules can change after you buy.' });
+        delta -= 15;
+      }
+      if (owner !== null) {
+        if (BigInt(owner) === 0n || owner.toLowerCase() === '0x000000000000000000000000000000000000dead') {
+          findings.push({ level: 'pass', title: 'No owner', detail: 'The creator has given up control of the contract.' });
+        } else if (seen.size > 0) {
+          findings.push({ level: 'caution', title: 'The creator still has control', detail: 'The powers above are still active.' });
+          delta -= 5;
+        }
       }
     } catch {
-      /* no owner() function */
+      findings.push({ level: 'unknown', title: 'Code could not be read', detail: 'We could not check the contract for creator powers.' });
+      delta -= 10;
     }
-  } catch {
-    findings.push({ level: 'unknown', title: 'Code could not be read', detail: 'We could not check the contract for creator powers.' });
-    score -= 10;
-  }
+    return { findings, delta };
+  };
 
   // Explorer: verified source, age, holder concentration. Unknown is never "passed".
-  const addr = await explorer<{ is_verified?: boolean; creation_tx_hash?: string }>(`/addresses/${token.address}`);
-  if (addr === null) {
-    findings.push({ level: 'unknown', title: 'Explorer unavailable', detail: 'Source code, age and holders could not be checked right now.' });
-    score -= 10;
-  } else {
+  const explorerPart = async (): Promise<Part> => {
+    const findings: Finding[] = [];
+    let delta = 0;
+    const [addr, holders, supply] = await Promise.all([
+      explorer<{ is_verified?: boolean; creation_tx_hash?: string }>(`/addresses/${token.address}`),
+      explorer<{ items?: { value?: string; address?: { hash?: string; is_contract?: boolean } }[] }>(`/tokens/${token.address}/holders`),
+      client.readContract({ address: token.address, abi: erc20Meta, functionName: 'totalSupply' }).catch(() => 0n),
+    ]);
+    if (addr === null) return { delta: -10, findings: [{ level: 'unknown', title: 'Explorer unavailable', detail: 'Source code, age and holders could not be checked right now.' }] };
     if (addr.is_verified) findings.push({ level: 'pass', title: 'Code is public', detail: 'Its source is verified on the QMS Explorer.' });
     else {
       findings.push({ level: 'caution', title: 'Code is hidden', detail: 'The source is not verified, so nobody can easily check what it does.' });
-      score -= 10;
+      delta -= 10;
     }
     if (addr.creation_tx_hash) {
       const tx = await explorer<{ timestamp?: string }>(`/transactions/${addr.creation_tx_hash}`);
@@ -290,21 +292,28 @@ export async function checkToken(address: Address, opts: { fresh?: boolean } = {
         const ageH = (Date.now() - Date.parse(tx.timestamp)) / 3_600_000;
         if (ageH < 24) {
           findings.push({ level: 'caution', title: 'Brand new', detail: `Created ${ageH < 1 ? 'less than an hour' : Math.floor(ageH) + ' hours'} ago.` });
-          score -= 10;
+          delta -= 10;
         }
       }
     }
-    const holders = await explorer<{ items?: { value?: string; address?: { hash?: string; is_contract?: boolean } }[] }>(`/tokens/${token.address}/holders`);
-    const supply = await client.readContract({ address: token.address, abi: erc20Meta, functionName: 'totalSupply' }).catch(() => 0n);
     if (holders?.items && supply > 0n) {
       const top = holders.items.filter((h) => !h.address?.is_contract).slice(0, 5).reduce((s, h) => s + BigInt(h.value ?? '0'), 0n);
       const pct = Number((top * 1000n) / supply) / 10;
       if (pct > 50) {
         findings.push({ level: 'caution', title: `Five wallets hold ${Math.round(pct)}%`, detail: 'A few holders selling could move the price sharply.' });
-        score -= 15;
+        delta -= 15;
       }
     }
-  }
+    return { findings, delta };
+  };
+
+  const [pool, sim, codeRes, exp] = await Promise.all([poolPart(), probePart(), codePart(), explorerPart()]);
+  // Without a pool the simulation is meaningless, so the pool verdict comes first.
+  const blocked = pool.blocked ?? sim.blocked;
+  const parts = pool.blocked ? [pool, codeRes, exp] : [pool, sim, codeRes, exp];
+  const findings: Finding[] = parts.flatMap((p) => p.findings);
+  let score = 100 + parts.reduce((s, p) => s + p.delta, 0);
+  const { priceQms, liquidityUsd } = pool;
 
   score = Math.max(0, Math.min(100, score));
   const verdict: Safety['verdict'] = blocked ? 'blocked' : score < 50 ? 'high' : score < 80 ? 'caution' : 'ok';

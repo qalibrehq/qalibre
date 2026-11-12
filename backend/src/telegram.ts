@@ -41,18 +41,43 @@ export function verifyInitData(initData: string, botToken: string, maxAgeSec = 2
   }
 }
 
+export class TelegramError extends Error {
+  constructor(readonly method: string, readonly description: string) {
+    super(`telegram ${method}: ${description}`);
+  }
+}
+
 export class Bot {
   constructor(private readonly token: string) {}
 
-  async call<T = unknown>(method: string, body: Record<string, unknown> = {}): Promise<T> {
+  async call<T = unknown>(method: string, body: Record<string, unknown> = {}, retries = 2): Promise<T> {
     const res = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(method === 'getUpdates' ? 40_000 : 15_000),
     });
-    const json = (await res.json()) as { ok: boolean; result: T; description?: string };
-    if (!json.ok) throw new Error(`telegram ${method}: ${json.description ?? res.status}`);
+    const json = (await res.json()) as { ok: boolean; result: T; description?: string; parameters?: { retry_after?: number } };
+    // Flood control: Telegram says how long to wait. Wait (bounded) and retry, so a final status edit is never lost.
+    if (!json.ok && res.status === 429 && retries > 0) {
+      const wait = Math.min(30, json.parameters?.retry_after ?? 2);
+      await new Promise((r) => setTimeout(r, wait * 1000));
+      return this.call<T>(method, body, retries - 1);
+    }
+    if (!json.ok) throw new TelegramError(method, json.description ?? String(res.status));
     return json.result;
+  }
+
+  editMessage(chatId: number, messageId: number, text: string, extra: Record<string, unknown> = {}) {
+    return this.call('editMessageText', { chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML', disable_web_page_preview: true, ...extra }).catch((e) => {
+      // Editing to identical content is not an error for us.
+      if (e instanceof TelegramError && e.description.includes('message is not modified')) return null;
+      throw e;
+    });
+  }
+
+  answer(callbackId: string, text?: string, alert = false) {
+    return this.call('answerCallbackQuery', { callback_query_id: callbackId, ...(text ? { text, show_alert: alert } : {}) }).catch(() => null);
   }
 
   sendMessage(chatId: number, text: string, extra: Record<string, unknown> = {}) {

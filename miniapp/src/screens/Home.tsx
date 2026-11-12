@@ -98,6 +98,19 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
               <p className="num" style={{ margin: 0, fontSize: 15, fontWeight: 500 }}>${usd(h.valueUsd)}</p>
             </div>
           ))}
+          {(me.positions ?? []).map((p) => (
+            <div key={p.token} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 0', borderBottom: '1px solid var(--rule)' }}>
+              <div style={{ width: 34, height: 34, borderRadius: 17, background: 'var(--paper-2)', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, overflow: 'hidden' }}>{p.symbol.slice(0, 4)}</div>
+              <div className="grow" style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</p>
+                <p className="muted num" style={{ margin: '2px 0 0', fontSize: 13 }}>{p.amount.toLocaleString('en-US', { maximumFractionDigits: p.amount >= 1000 ? 0 : 4 })} {p.symbol}</p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <p className="num" style={{ margin: 0, fontSize: 15, fontWeight: 500 }}>${usd(p.valueUsd)}</p>
+                <p className="num" style={{ margin: '2px 0 0', fontSize: 12, color: p.pnlPct === null ? 'var(--graphite)' : p.pnlPct >= 0 ? 'var(--green)' : 'var(--danger)' }}>{p.pnlPct === null ? 'Cost unknown' : `${p.pnlPct >= 0 ? '+' : ''}${p.pnlPct.toFixed(1)}%`}</p>
+              </div>
+            </div>
+          ))}
           <TestFundsButton onDone={() => setTimeout(refresh, 1500)} toast={toast} />
         </div>
       </div>

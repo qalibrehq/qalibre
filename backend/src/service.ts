@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { hashTypedData, type Address, type Hex, isAddress, getAddress } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { config, TOKENS, TOKEN_INFO } from './config.js';
+import { config, TOKENS } from './config.js';
+import { checkToken, poolOf, tokenInfo, type TokenInfo } from './tokens.js';
 import { decrypt, encrypt } from './crypto.js';
 import type { Db, OrderRow } from './db.js';
 import { QalibreAccountFactoryAbi } from '../../solver/src/abi/QalibreAccountFactory.js';
@@ -26,6 +27,18 @@ import { clearPair, type PairOrder } from '../../solver/src/clearing.js';
 import { getAmountOut } from '../../solver/src/amm.js';
 
 export class UserError extends Error {}
+/** The owner must approve this token once (signed on their phone) before Qalibre may trade it. */
+export class NeedsApproval extends UserError {
+  constructor(readonly token: Address) {
+    super('This token needs your one-time approval before Qalibre can trade it.');
+  }
+}
+/** The trade moves the price enough that the user must confirm it explicitly. */
+export class HighImpact extends UserError {
+  constructor(readonly impactBps: number) {
+    super(`This trade moves the price by about ${(impactBps / 100).toFixed(1)}%. Confirm to continue.`);
+  }
+}
 
 const dep = loadDeployment();
 const client = publicClient();
@@ -71,7 +84,14 @@ function isCurrent<T extends { account: string | null; settlement: string | null
   return Boolean(u?.account && u.settlement && u.settlement.toLowerCase() === dep.settlement.toLowerCase());
 }
 
-export function createService(db: Db, notify: (tgId: number, html: string) => Promise<void>) {
+/** What an order notification is about, so the chat can update the trade card in place instead of posting anew. */
+export interface NotifyContext {
+  order: OrderRow;
+  kind: 'filled' | 'expired' | 'failed' | 'requeued';
+}
+export type Notify = (tgId: number, html: string, ctx?: NotifyContext) => Promise<void>;
+
+export function createService(db: Db, notify: Notify) {
   // ---------------------------------------------------------------------------------------------
   // Registration: the owner key lives on the user's device; we only ever see its address and its
   // signature over the account setup. We generate the session key and keep it encrypted.
@@ -169,14 +189,39 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
   // ---------------------------------------------------------------------------------------------
   // Quotes and orders
   // ---------------------------------------------------------------------------------------------
-  function checkPair(sell: string, buy: string) {
-    if (!SUPPORTED.has(sell.toLowerCase()) || !SUPPORTED.has(buy.toLowerCase()) || sell.toLowerCase() === buy.toLowerCase()) {
-      throw new UserError('That pair is not available yet.');
+  /**
+   * A pair is tradable when it is QMS/USDC, or a token against QMS that passes the safety check.
+   * `fresh` re-runs the simulated buy/sell (used at the moment of a buy: a token can turn into a honeypot later).
+   */
+  async function checkTradable(sell: Address, buy: Address, fresh = false) {
+    if (sell.toLowerCase() === buy.toLowerCase()) throw new UserError('Choose two different tokens.');
+    const bothCore = SUPPORTED.has(sell.toLowerCase()) && SUPPORTED.has(buy.toLowerCase());
+    if (bothCore) return;
+    const wqms = TOKENS.WQMS.toLowerCase();
+    if (sell.toLowerCase() !== wqms && buy.toLowerCase() !== wqms) throw new UserError('Tokens trade against QMS. Choose QMS as the other side.');
+    const buying = sell.toLowerCase() === wqms;
+    const other = buying ? buy : sell;
+    if (!buying) {
+      // Getting out is never blocked by our score: selling needs only a readable token and a pool.
+      // If the sale itself cannot settle (e.g. a honeypot), the engine reports "not filled" and nothing moves.
+      try {
+        await poolOf(await tokenInfo(other));
+      } catch {
+        throw new UserError('This token has no QWAP pool against QMS, so it cannot be sold here.');
+      }
+      return;
     }
+    let safety;
+    try {
+      safety = await checkToken(other, { fresh });
+    } catch {
+      throw new UserError('That is not a token Qalibre can read.');
+    }
+    if (!safety.tradable) throw new UserError(safety.reason ?? 'This token cannot be traded safely.');
   }
 
   async function quote(sellToken: Address, buyToken: Address, sellAmount: bigint) {
-    checkPair(sellToken, buyToken);
+    await checkTradable(sellToken, buyToken);
     if (sellAmount <= 0n) throw new UserError('Enter an amount.');
     const [a, b] = sellToken.toLowerCase() < buyToken.toLowerCase() ? [sellToken, buyToken] : [buyToken, sellToken];
     const res = await readReserves(client, dep.qwapRouter, a, b);
@@ -192,8 +237,16 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
     const sim = clearPair([...pending, { id: 'quote', sellsA, sellAmount, minBuyAmount: minOut }], { a: res.a, b: res.b }, fees);
     const likely = sim?.fills.find((f) => f.id === 'quote')?.net ?? direct;
     const maxNetworkFee = await networkFeeCap(buyToken, res.a, res.b, a);
-    return { direct, minOut, likely: likely > direct ? likely : direct, waiting: pending.length, maxNetworkFee };
+    // Price impact: how far this trade alone moves the price (direct output vs the same amount at spot price).
+    const [rIn, rOut] = sellsA ? [res.a, res.b] : [res.b, res.a];
+    const atSpot = (sellAmount * rOut) / rIn;
+    const impactBps = atSpot > 0n ? Number(((atSpot - direct) * 10_000n) / atSpot) : 0;
+    return { direct, minOut, likely: likely > direct ? likely : direct, waiting: pending.length, maxNetworkFee, impactBps };
   }
+
+  /** Impact above this asks for confirmation; above MAX_IMPACT_BPS is refused. */
+  const CONFIRM_IMPACT_BPS = 500;
+  const MAX_IMPACT_BPS = 3_000;
 
   /**
    * The most the user signs for network costs: 3x today's measured gas cost for one trade, converted into the
@@ -221,27 +274,48 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
     return feeCache;
   }
 
-  async function placeOrder(tgId: number, sellToken: Address, buyToken: Address, sellAmount: bigint, mode: 'instant' | 'best' = 'best') {
+  async function placeOrder(
+    tgId: number,
+    sellToken: Address,
+    buyToken: Address,
+    sellAmount: bigint,
+    mode: 'instant' | 'best' = 'best',
+    opts: { acceptImpact?: boolean } = {},
+  ) {
     const user = db.getUser(tgId);
     if (!isCurrent(user) || !user?.session_key_enc) throw new UserError('Open your wallet first.');
-    checkPair(sellToken, buyToken);
+    // Re-run the safety check now for buys of non-core tokens (time-of-check vs time-of-use).
+    const buyingNewToken = !SUPPORTED.has(buyToken.toLowerCase());
+    await checkTradable(sellToken, buyToken, buyingNewToken);
     const account = user.account as Address;
-    const [bal, limit, spent, active] = await Promise.all([
+    const [bal, limit, spent, active, buyAllowed, sellInfo] = await Promise.all([
       client.readContract({ address: sellToken, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'tokenLimit', args: [sellToken] }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'spentToday', args: [sellToken] }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionActive' }),
+      client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'isBuyTokenAllowed', args: [buyToken] }),
+      tokenInfo(sellToken),
     ]);
-    const sym = TOKEN_INFO[sellToken.toLowerCase()]?.symbol ?? 'tokens';
-    if (!active) throw new UserError('Trading permission is off. Turn it on in Control.');
-    if (sellAmount > bal) throw new UserError(`You don't have enough ${sym}.`);
+    const sym = sellInfo.symbol;
+    if (!active) throw new UserError('Trading permission is off. Turn it on in your Wallet.');
     const [perTrade, perDay] = limit as readonly [bigint, bigint];
+    // A token the owner has not approved needs a one-time approval signed on their phone.
+    if (!buyAllowed) throw new NeedsApproval(buyToken);
+    if (perTrade === 0n) throw new NeedsApproval(sellToken);
+    // Native QMS counts: the wallet wraps any shortfall automatically when the order settles.
+    const native = sellToken.toLowerCase() === TOKENS.WQMS.toLowerCase() ? await client.getBalance({ address: account }) : 0n;
+    const spendable = bal + native;
+    if (sellAmount > spendable) throw new UserError(`You don't have enough ${sym}.`);
     if (sellAmount > perTrade) throw new UserError('That is above your per-trade limit.');
     const reserved = db.pendingOrders().filter((o) => o.tg_id === tgId && o.sell_token.toLowerCase() === sellToken.toLowerCase()).reduce((s, o) => s + BigInt(o.sell_amount), 0n);
     if (spent + reserved + sellAmount > perDay) throw new UserError('That would pass your daily limit.');
-    if (reserved + sellAmount > bal) throw new UserError(`You already have pending orders using this ${sym}.`);
+    if (reserved + sellAmount > spendable) throw new UserError(`You already have pending orders using this ${sym}.`);
 
     const q = await quote(sellToken, buyToken, sellAmount);
+    // Buys into a thin pool are refused above the cap. Exits never are: a holder must always be able to get out.
+    const exit = buyToken.toLowerCase() === TOKENS.WQMS.toLowerCase() && !SUPPORTED.has(sellToken.toLowerCase());
+    if (!exit && q.impactBps > MAX_IMPACT_BPS) throw new UserError(`This trade would move the price by about ${Math.round(q.impactBps / 100)}%. The pool is too small for that amount; try less.`);
+    if (q.impactBps > CONFIRM_IMPACT_BPS && !opts.acceptImpact) throw new HighImpact(q.impactBps);
     const now = Math.floor(Date.now() / 1000);
     const order: Order = {
       account,
@@ -342,7 +416,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
       for (const o of db.pendingOrders()) {
         if (o.valid_to < now + 20) {
           db.markStatus(o.id, 'expired', 'Not filled in time. Nothing was traded.');
-          await notify(o.tg_id, "<b>Order not filled.</b>\nWe couldn't fill it within your price limit in time, so nothing was traded. Your balance is unchanged.");
+          await notify(o.tg_id, "<b>Order not filled.</b>\nWe couldn't fill it within your price limit in time, so nothing was traded. Your balance is unchanged.", { order: o, kind: 'expired' });
         }
       }
       const groups = new Map<string, OrderRow[]>();
@@ -370,7 +444,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
                 if (!q) continue;
                 db.markFilled(q.id, { tx: r.hash, buy: rec.buyAmount.toString(), fee: rec.fee.toString(), networkFee: rec.networkFee.toString(), direct: rec.directQuote.toString(), batchId });
                 const row = db.getOrder(q.id)!;
-                void notify(row.tg_id, fillMessage(row));
+                void fillMessage(row).then((html) => notify(row.tg_id, html, { order: row, kind: 'filled' }));
               }
               void waitForConfirmations(client, r.hash, config.finalConfirmations)
                 .then(() => db.markConfirmed(r.hash))
@@ -378,7 +452,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
                   if (e instanceof DroppedByReorg) {
                     // The settlement never happened on-chain; settle these orders again and say so plainly.
                     for (const row of db.requeueByTx(r.hash)) {
-                      void notify(row.tg_id, '<b>Re-settling your order.</b>\nThe QMS network reorganized the block with your trade, so it did not complete. It is back in the queue at your original price limit. Your balance was never at risk.');
+                      void notify(row.tg_id, '<b>Re-settling your order.</b>\nThe QMS network reorganized the block with your trade, so it did not complete. It is back in the queue at your original price limit. Your balance was never at risk.', { order: row, kind: 'requeued' });
                     }
                   }
                   console.error(`settlement ${r.hash} did not reach finality:`, (e as Error).message);
@@ -397,7 +471,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
             for (const b of blockers) {
               db.markStatus(b.id, 'failed', 'This order could not be settled, so nothing was traded. Your balance is unchanged.');
               const row = db.getOrder(b.id);
-              if (row) void notify(row.tg_id, '<b>Order not filled.</b>\nIt could not be settled, so nothing was traded. Your balance is unchanged. Check your trading permission and limits, then try again.');
+              if (row) void notify(row.tg_id, '<b>Order not filled.</b>\nIt could not be settled, so nothing was traded. Your balance is unchanged. Check your trading permission and limits, then try again.', { order: row, kind: 'failed' });
             }
             const ids = new Set(blockers.map((b) => b.id));
             queue = queue.filter((q) => !ids.has(q.id));
@@ -411,8 +485,8 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
     }
   }
 
-  function fillMessage(o: OrderRow): string {
-    const buy = TOKEN_INFO[o.buy_token.toLowerCase()]!;
+  async function fillMessage(o: OrderRow): Promise<string> {
+    const buy = await tokenInfo(o.buy_token as Address).catch(() => ({ symbol: 'tokens', decimals: 18 }));
     const got = BigInt(o.buy_amount ?? '0');
     const networkFee = BigInt(o.network_fee ?? '0');
     const direct = BigInt(o.direct_quote ?? '0');
@@ -430,6 +504,84 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
     ]
       .filter(Boolean)
       .join('\n');
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Positions: tokens traded through Qalibre, with honest profit and loss
+  // ---------------------------------------------------------------------------------------------
+  /**
+   * Cost is the average QMS paid, from this user's own fills. Value is what selling the whole position
+   * right now would actually return from the pool (not the flattering spot price). Tokens received
+   * outside Qalibre have no known cost and are reported as such, never guessed.
+   */
+  async function positions(tgId: number) {
+    const user = db.getUser(tgId);
+    if (!isCurrent(user)) return [];
+    const account = user.account as Address;
+    const wqms = TOKENS.WQMS.toLowerCase();
+    const book = new Map<string, { qty: bigint; cost: bigint }>();
+    const fills = db.userOrders(tgId, 1000).filter((o) => o.status === 'filled').reverse(); // oldest first
+    for (const o of fills) {
+      const buyingToken = o.sell_token.toLowerCase() === wqms && !SUPPORTED.has(o.buy_token.toLowerCase());
+      const sellingToken = o.buy_token.toLowerCase() === wqms && !SUPPORTED.has(o.sell_token.toLowerCase());
+      if (buyingToken) {
+        const p = book.get(o.buy_token.toLowerCase()) ?? { qty: 0n, cost: 0n };
+        p.qty += BigInt(o.buy_amount!);
+        p.cost += BigInt(o.sell_amount);
+        book.set(o.buy_token.toLowerCase(), p);
+      } else if (sellingToken) {
+        const p = book.get(o.sell_token.toLowerCase());
+        if (!p || p.qty === 0n) continue;
+        const sold = BigInt(o.sell_amount) < p.qty ? BigInt(o.sell_amount) : p.qty;
+        p.cost -= (p.cost * sold) / p.qty;
+        p.qty -= sold;
+      }
+    }
+    const out = await Promise.all(
+      [...book.keys()].map(async (addr) => {
+        const token = await tokenInfo(addr as Address);
+        const balance = await client.readContract({ address: token.address, abi: erc20Abi, functionName: 'balanceOf', args: [account] });
+        if (balance === 0n) return null;
+        const pool = await poolOf(token).catch(() => null);
+        const exitQms = pool ? getAmountOut(balance, pool.tokenReserve, pool.qmsReserve) : 0n;
+        const p = book.get(addr)!;
+        // Only the part we have a record of has a known cost.
+        const known = balance < p.qty ? balance : p.qty;
+        const costQms = p.qty > 0n ? (p.cost * known) / p.qty : 0n;
+        const knownExit = balance > 0n ? (exitQms * known) / balance : 0n;
+        return {
+          token,
+          balance,
+          exitQms,
+          priceQms: pool?.priceQms ?? 0,
+          costQms: known > 0n ? costQms : null,
+          pnlQms: known > 0n ? knownExit - costQms : null,
+          pnlPct: known > 0n && costQms > 0n ? Number(((knownExit - costQms) * 10_000n) / costQms) / 100 : null,
+          untracked: balance > p.qty ? balance - p.qty : 0n,
+        };
+      }),
+    );
+    return out.filter((x): x is NonNullable<typeof x> => x !== null);
+  }
+
+  /**
+   * Everything a chat card needs about one user and one token, read live from their wallet contract:
+   * spendable QMS (wrapped + native), the QMS per-trade limit, the token balance and its approval state.
+   */
+  async function tradeContext(tgId: number, token: Address) {
+    const user = db.getUser(tgId);
+    if (!isCurrent(user)) return null;
+    const account = user.account as Address;
+    const [wqms, native, [qmsPerTrade], balance, buyAllowed, [tokenPerTrade], active] = await Promise.all([
+      client.readContract({ address: TOKENS.WQMS, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
+      client.getBalance({ address: account }),
+      client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'tokenLimit', args: [TOKENS.WQMS] }),
+      client.readContract({ address: token, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
+      client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'isBuyTokenAllowed', args: [token] }),
+      client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'tokenLimit', args: [token] }),
+      client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionActive' }),
+    ]);
+    return { account, qmsSpendable: wqms + native, qmsPerTrade, balance, buyAllowed, canSell: tokenPerTrade > 0n, active };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -472,17 +624,23 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
       const diff = BigInt(o.buy_amount!) - BigInt(o.direct_quote!);
       savedUsd += o.buy_token.toLowerCase() === TOKENS.USDC.toLowerCase() ? Number(diff) / 1e6 : (Number(diff) / 1e18) * usdcPerQms;
     }
+    // Tokens bought through chat trading, valued at what selling them now would return.
+    const pos = (await positions(tgId).catch(() => [])).map((p) => {
+      const valueUsd = (Number(p.exitQms) / 1e18) * usdcPerQms;
+      return { symbol: p.token.symbol, name: p.token.name, token: p.token.address, decimals: p.token.decimals, balance: p.balance.toString(), amount: Number(p.balance) / 10 ** p.token.decimals, valueUsd, pnlPct: p.pnlPct };
+    });
     return {
       registered: true as const,
       account,
       owner: user.owner,
+      positions: pos,
       firstName: user.first_name,
       price: { usdcPerQms },
       holdings: [
         { symbol: 'QMS', name: 'QMS', amount: qms, valueUsd: qms * usdcPerQms, token: TOKENS.WQMS },
         { symbol: 'USDC', name: 'USD Coin', amount: usd, valueUsd: usd, token: TOKENS.USDC },
       ],
-      totalUsd: qms * usdcPerQms + usd,
+      totalUsd: qms * usdcPerQms + usd + pos.reduce((s, p) => s + p.valueUsd, 0),
       /** Native QMS (e.g. from the faucet) is not tradeable until wrapped; shown separately and honestly. */
       unwrappedQms: unwrapped,
       savedUsd,
@@ -497,7 +655,7 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
     return { nextBatchInMs: msToNextBatch(), waiting: db.countPending(), batch: db.lastBatchId() + 1, intervalMs: config.bestWindowMs, lastRunAt };
   }
 
-  return { prepareRegistration, completeRegistration, quote, placeOrder, runBatch, portfolio, batchStatus, fillMessage, requestTestFunds, deployment: dep };
+  return { prepareRegistration, completeRegistration, quote, placeOrder, runBatch, portfolio, positions, tradeContext, batchStatus, fillMessage, requestTestFunds, isRegistered: (tgId: number) => isCurrent(db.getUser(tgId)), deployment: dep };
 }
 
 export function trimUnits(v: bigint, decimals: number, maxFrac = 6): string {

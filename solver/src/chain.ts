@@ -127,13 +127,34 @@ export async function signOrderAsSession(session: LocalAccount, settlement: Addr
  * Reserves of the QWAP pair for (tokenA, tokenB), oriented by ARGUMENT ORDER:
  * `a` is always the reserve of `tokenA` (the first argument) and `b` of `tokenB`, whatever their addresses.
  */
-export async function readReserves(client: PublicClient, router: Address, tokenA: Address, tokenB: Address) {
-  const factory = await client.readContract({ address: router, abi: routerAbi, functionName: 'factory' });
+const factoryOf = new Map<string, Address>();
+const pairOf = new Map<string, { pair: Address; token0: Address }>();
+
+/**
+ * Pair address and token0 never change once a pool exists, so they are cached for the life of the process
+ * (a missing pool is not cached: it may be created later). Reserves and the block are always read fresh.
+ */
+async function pairInfo(client: PublicClient, router: Address, tokenA: Address, tokenB: Address) {
+  const key = [router, tokenA, tokenB].map((x) => x.toLowerCase()).sort().join(':');
+  const hit = pairOf.get(key);
+  if (hit) return hit;
+  let factory = factoryOf.get(router.toLowerCase());
+  if (!factory) {
+    factory = await client.readContract({ address: router, abi: routerAbi, functionName: 'factory' });
+    factoryOf.set(router.toLowerCase(), factory);
+  }
   const pair = await client.readContract({ address: factory, abi: factoryV2Abi, functionName: 'getPair', args: [tokenA, tokenB] });
   if (pair === '0x0000000000000000000000000000000000000000') throw new Error('no QWAP pool for this pair');
-  const [[r0, r1], token0, block] = await Promise.all([
+  const token0 = await client.readContract({ address: pair, abi: pairAbi, functionName: 'token0' });
+  const info = { pair, token0 };
+  pairOf.set(key, info);
+  return info;
+}
+
+export async function readReserves(client: PublicClient, router: Address, tokenA: Address, tokenB: Address) {
+  const { pair, token0 } = await pairInfo(client, router, tokenA, tokenB);
+  const [[r0, r1], block] = await Promise.all([
     client.readContract({ address: pair, abi: pairAbi, functionName: 'getReserves' }),
-    client.readContract({ address: pair, abi: pairAbi, functionName: 'token0' }),
     client.getBlockNumber(),
   ]);
   const aIs0 = token0.toLowerCase() === tokenA.toLowerCase();

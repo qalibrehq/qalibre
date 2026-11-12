@@ -9,16 +9,25 @@ import { Activity } from './screens/Activity';
 import { Control } from './screens/Control';
 import { Limits } from './screens/Limits';
 import { Send } from './screens/Send';
+import { Approve } from './screens/Approve';
 import { Wordmark } from './ui/Brand';
 
-type Route = { name: 'home' } | { name: 'trade'; side: 'buy' | 'sell' } | { name: 'receipt'; orderId: string } | { name: 'activity' } | { name: 'control' } | { name: 'limits' } | { name: 'send' };
+type Route = { name: 'home' } | { name: 'trade'; side: 'buy' | 'sell' } | { name: 'receipt'; orderId: string } | { name: 'activity' } | { name: 'control' } | { name: 'limits' } | { name: 'send' } | { name: 'approve'; token: string };
 export type Nav = (name: Route['name'], params?: Record<string, string>) => void;
 
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [vault, setVault] = useState<boolean | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
-  const [route, setRoute] = useState<Route>({ name: 'home' });
+  // Deep links from the chat: ?approve=<token address> or ?screen=control|limits.
+  const [route, setRoute] = useState<Route>(() => {
+    const q = new URLSearchParams(window.location.search);
+    const approve = q.get('approve');
+    if (approve && /^0x[0-9a-fA-F]{40}$/.test(approve)) return { name: 'approve', token: approve };
+    const screen = q.get('screen');
+    if (screen === 'control' || screen === 'limits' || screen === 'activity') return { name: screen };
+    return { name: 'home' };
+  });
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -59,6 +68,7 @@ export function App() {
     window.scrollTo(0, 0);
     if (name === 'trade') setRoute({ name, side: params.side === 'sell' ? 'sell' : 'buy' });
     else if (name === 'receipt') setRoute({ name, orderId: params.orderId ?? '' });
+    else if (name === 'approve') setRoute({ name, token: params.token ?? '' });
     else setRoute({ name } as Route);
   }, []);
 
@@ -102,6 +112,7 @@ export function App() {
       {route.name === 'activity' && <Activity nav={nav} />}
       {route.name === 'control' && <Control me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
       {route.name === 'limits' && <Limits me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
+      {route.name === 'approve' && <Approve me={me} token={route.token} nav={nav} />}
       {route.name === 'send' && <Send me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
       {toastMsg && <div className="toast" role="alert">{toastMsg}</div>}
     </>

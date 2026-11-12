@@ -10,6 +10,7 @@ interface TgWebApp {
   enableClosingConfirmation?(): void;
   disableVerticalSwipes?(): void;
   openLink(url: string): void;
+  close?(): void;
   isVersionAtLeast?(v: string): boolean;
   HapticFeedback?: { impactOccurred(s: 'light' | 'medium' | 'rigid' | 'soft' | 'heavy'): void; notificationOccurred(t: 'success' | 'warning' | 'error'): void; selectionChanged(): void };
   CloudStorage?: {

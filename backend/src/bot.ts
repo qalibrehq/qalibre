@@ -2,10 +2,13 @@ import { config } from './config.js';
 import type { Db } from './db.js';
 import { Bot, esc } from './telegram.js';
 import type { Service } from './service.js';
+import type { Chat } from './chat.js';
 
 interface Update {
   update_id: number;
-  message?: { chat: { id: number; type: string }; from?: { id: number; first_name?: string }; text?: string };
+  message?: { message_id: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string; is_bot?: boolean }; text?: string };
+  callback_query?: { id: string; from: { id: number }; data?: string; message?: { message_id: number; chat: { id: number; type: string } } };
+  inline_query?: { id: string; from: { id: number }; query: string };
 }
 
 function openButton() {
@@ -18,6 +21,11 @@ export async function setupBot(bot: Bot) {
   await bot.call('setMyCommands', {
     commands: [
       { command: 'start', description: 'Open Qalibre' },
+      { command: 'buy', description: 'Check a token and buy it' },
+      { command: 'sell', description: 'Sell a token' },
+      { command: 'portfolio', description: 'Holdings and profit' },
+      { command: 'limits', description: 'Your trading limits' },
+      { command: 'revoke', description: 'Turn trading off' },
       { command: 'balance', description: 'Balance and savings' },
       { command: 'how', description: 'How a batch works' },
       { command: 'fees', description: 'What you pay, and when' },
@@ -43,16 +51,23 @@ export async function setupBot(bot: Bot) {
   }
 }
 
-export function startBot(bot: Bot, db: Db, svc: Service) {
+export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat) {
   let offset = 0;
   let stopped = false;
 
   async function handle(u: Update) {
+    if (u.callback_query) return chat.onCallback(u.callback_query);
+    if (u.inline_query) return chat.onInlineQuery(u.inline_query);
     const msg = u.message;
-    if (!msg?.text || !msg.from || msg.chat.type !== 'private') return;
+    if (!msg?.text || !msg.from || msg.from.is_bot) return;
+    if (msg.chat.type !== 'private') return chat.onGroupText(msg.chat.id, msg.text, msg.message_id);
     const id = msg.from.id;
     db.upsertUser(id, msg.from.first_name ?? null);
-    const cmd = msg.text.trim().split(/\s+/)[0]!.toLowerCase().replace(/@\w+$/, '');
+    const [first = '', payload = ''] = msg.text.trim().split(/\s+/);
+    const cmd = first.toLowerCase().replace(/@\w+$/, '');
+
+    if (cmd === '/start' && payload && (await chat.onStartPayload(id, payload))) return;
+    if (await chat.onPrivateText(id, msg.text, msg.message_id)) return;
 
     if (cmd === '/start') {
       const name = msg.from.first_name ? `, ${esc(msg.from.first_name)}` : '';
@@ -119,7 +134,7 @@ export function startBot(bot: Bot, db: Db, svc: Service) {
           '',
           'If there is no improvement, there is no fee. You pay only QWAP\'s usual 0.3% on the part that goes to QWAP, exactly as if you had swapped there yourself.',
           '',
-          'Network fees are on us.',
+          'The network fee is passed on at cost, split across everyone in the batch, and never above the maximum you agree to before each trade. Turning trading off, changing limits and moving your own money are free.',
         ].join('\n'),
       );
       return;
@@ -137,13 +152,15 @@ export function startBot(bot: Bot, db: Db, svc: Service) {
           'You can turn the permission off at any time, and you can withdraw without Qalibre. Every rule is enforced by verified contracts on the QMS Explorer.',
         ].join('\n'),
       );
+      return;
     }
+    await bot.sendMessage(id, ['Paste a token address to check it and trade it here.', '', '/portfolio  holdings and profit', '/limits  your trading limits', '/how  how a batch works'].join('\n'));
   }
 
   (async () => {
     while (!stopped) {
       try {
-        const updates = await bot.call<Update[]>('getUpdates', { offset, timeout: 25, allowed_updates: ['message'] });
+        const updates = await bot.call<Update[]>('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'callback_query', 'inline_query'] });
         for (const u of updates) {
           offset = u.update_id + 1;
           await handle(u).catch((e) => console.error('bot handler', (e as Error).message));

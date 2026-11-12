@@ -41,6 +41,8 @@ export interface OrderRow {
   batch_id: number | null;
   created_at: number;
   updated_at: number;
+  /** The chat message that tracks this order live (chat trading), if any. */
+  status_msg_id: number | null;
 }
 
 export function openDb(path: string) {
@@ -82,6 +84,12 @@ export function openDb(path: string) {
     );
     CREATE INDEX IF NOT EXISTS orders_status ON orders(status);
     CREATE INDEX IF NOT EXISTS orders_user ON orders(tg_id, created_at);
+    CREATE TABLE IF NOT EXISTS cards (
+      id TEXT PRIMARY KEY,
+      tg_id INTEGER NOT NULL,
+      token TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS batches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tx_hash TEXT,
@@ -92,7 +100,7 @@ export function openDb(path: string) {
     );
   `);
 
-  for (const ddl of ['ALTER TABLE users ADD COLUMN pending_session_address TEXT', 'ALTER TABLE users ADD COLUMN pending_session_enc TEXT', 'ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN max_network_fee TEXT NOT NULL DEFAULT '0'", 'ALTER TABLE orders ADD COLUMN network_fee TEXT', 'ALTER TABLE users ADD COLUMN settlement TEXT', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER']) {
+  for (const ddl of ['ALTER TABLE users ADD COLUMN pending_session_address TEXT', 'ALTER TABLE users ADD COLUMN pending_session_enc TEXT', 'ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN max_network_fee TEXT NOT NULL DEFAULT '0'", 'ALTER TABLE orders ADD COLUMN network_fee TEXT', 'ALTER TABLE users ADD COLUMN settlement TEXT', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER', 'ALTER TABLE orders ADD COLUMN status_msg_id INTEGER']) {
     try {
       db.exec(ddl);
     } catch {
@@ -129,7 +137,7 @@ export function openDb(path: string) {
     userByAccount(account: string): UserRow | undefined {
       return db.prepare('SELECT * FROM users WHERE lower(account) = lower(?)').get(account) as UserRow | undefined;
     },
-    insertOrder(o: Omit<OrderRow, 'status' | 'reason' | 'tx_hash' | 'buy_amount' | 'fee' | 'direct_quote' | 'batch_id' | 'created_at' | 'updated_at' | 'confirmed' | 'created_ms' | 'network_fee'>) {
+    insertOrder(o: Omit<OrderRow, 'status' | 'reason' | 'tx_hash' | 'buy_amount' | 'fee' | 'direct_quote' | 'batch_id' | 'created_at' | 'updated_at' | 'confirmed' | 'created_ms' | 'network_fee' | 'status_msg_id'>) {
       const t = now();
       db.prepare(`INSERT INTO orders (id, tg_id, account, sell_token, buy_token, sell_amount, min_buy_amount, max_network_fee, valid_to, nonce, signature, status, mode, created_ms, created_at, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`).run(o.id, o.tg_id, o.account, o.sell_token, o.buy_token, o.sell_amount, o.min_buy_amount, o.max_network_fee, o.valid_to, o.nonce, o.signature, o.mode, Date.now(), t, t);
@@ -169,6 +177,17 @@ export function openDb(path: string) {
     insertBatch(b: { tx: string; block: number; trades: number; mtx: string }): number {
       const r = db.prepare('INSERT INTO batches (tx_hash, block, trades, qubo_mtx, created_at) VALUES (?, ?, ?, ?, ?)').run(b.tx, b.block, b.trades, b.mtx, now());
       return Number(r.lastInsertRowid);
+    },
+    /** A chat card: an opaque id that stands for (user, token) in button data, so buttons never carry addresses or amounts. */
+    putCard(id: string, tgId: number, token: string) {
+      db.prepare('INSERT OR REPLACE INTO cards (id, tg_id, token, created_at) VALUES (?, ?, ?, ?)').run(id, tgId, token, now());
+      db.prepare('DELETE FROM cards WHERE created_at < ?').run(now() - 30 * 86400);
+    },
+    getCard(id: string): { id: string; tg_id: number; token: string } | undefined {
+      return db.prepare('SELECT id, tg_id, token FROM cards WHERE id = ?').get(id) as { id: string; tg_id: number; token: string } | undefined;
+    },
+    setStatusMessage(orderId: string, messageId: number) {
+      db.prepare('UPDATE orders SET status_msg_id = ? WHERE id = ?').run(messageId, orderId);
     },
     lastBatchId(): number {
       return (db.prepare('SELECT coalesce(max(id), 0) AS n FROM batches').get() as { n: number }).n;

@@ -11,7 +11,7 @@
 import { decodeFunctionData, encodeAbiParameters, parseAbi, concat, pad, numberToHex, type Address, type Hex, isAddress } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { toPackedUserOperation, type UserOperation } from 'viem/account-abstraction';
-import { config, TOKENS } from './config.js';
+import { config } from './config.js';
 import { encrypt } from './crypto.js';
 import type { Db } from './db.js';
 import { UserError } from './service.js';
@@ -31,8 +31,6 @@ const entryPointAbi = parseAbi([
 ]);
 const paymasterAbi = parseAbi([`function getHash(${PACKED} userOp, uint48 validUntil, uint48 validAfter) view returns (bytes32)`]);
 const erc20TransferAbi = parseAbi(['function transfer(address to, uint256 amount) returns (bool)']);
-
-const SUPPORTED = new Set([TOKENS.WQMS.toLowerCase(), TOKENS.USDC.toLowerCase()]);
 
 /** What Qalibre will sponsor. Anything else is refused before it costs anyone anything. */
 function checkPolicy(account: Address, callData: Hex): { action: string; detail?: Record<string, string> } {
@@ -55,11 +53,19 @@ function checkPolicy(account: Address, callData: Hex): { action: string; detail?
   }
   if (fn === 'execute') {
     const [target, value, data] = decoded.args as readonly [Address, bigint, Hex];
-    // Send native QMS to an address (no contract call), or send a supported token.
+    // Send native QMS to an address (no contract call), or send any token the wallet holds with a plain transfer.
+    // Every token must be withdrawable by its owner, including ones bought through chat trading. Abuse of the
+    // sponsorship is bounded by the per-user daily cap and the simulation before sending.
     if (data === '0x' && value > 0n) return { action: 'sendNative', detail: { to: target, amount: value.toString() } };
-    if (value === 0n && SUPPORTED.has(target.toLowerCase())) {
-      const t = decodeFunctionData({ abi: erc20TransferAbi, data });
-      if (t.functionName === 'transfer') return { action: 'sendToken', detail: { token: target, to: t.args[0], amount: t.args[1].toString() } };
+    if (value === 0n && target.toLowerCase() !== account.toLowerCase()) {
+      const t = (() => {
+        try {
+          return decodeFunctionData({ abi: erc20TransferAbi, data });
+        } catch {
+          return null;
+        }
+      })();
+      if (t?.functionName === 'transfer') return { action: 'sendToken', detail: { token: target, to: t.args[0], amount: t.args[1].toString() } };
     }
   }
   throw new UserError('That action is not supported.');

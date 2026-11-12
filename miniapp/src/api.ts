@@ -35,6 +35,8 @@ export interface Me {
   firstName?: string;
   price?: { usdcPerQms: number };
   holdings?: { symbol: string; name: string; amount: number; valueUsd: number; token: string }[];
+  /** Tokens bought through chat trading. `balance` is in base units; value is what selling all would return now. */
+  positions?: { symbol: string; name: string; token: string; decimals: number; balance: string; amount: number; valueUsd: number; pnlPct: number | null }[];
   totalUsd?: number;
   savedUsd?: number;
   trades?: number;
@@ -66,7 +68,21 @@ export interface OrderRow {
   updated_at: number;
 }
 
+export interface Safety {
+  token: { address: string; symbol: string; name: string; decimals: number; verified: boolean };
+  verdict: 'blocked' | 'high' | 'caution' | 'ok';
+  score: number;
+  findings: { level: 'danger' | 'caution' | 'pass' | 'unknown'; title: string; detail: string }[];
+  tradable: boolean;
+  reason?: string;
+  priceQms: number;
+  priceUsd: number;
+  liquidityUsd: number;
+  checkedAt: number;
+}
+
 export const api = {
+  token: (address: string) => call<Safety>(`/api/token?address=${encodeURIComponent(address)}`),
   me: () => call<Me>('/api/me'),
   batch: () => call<BatchStatus>('/api/batch'),
   prepare: (owner: string) => call<{ setupHash: `0x${string}`; account: string; limits: { token: string; perTrade: string; perDay: string }[]; validUntil: number }>('/api/register/prepare', { method: 'POST', body: JSON.stringify({ owner }) }),

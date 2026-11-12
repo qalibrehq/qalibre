@@ -195,7 +195,12 @@ export async function executeBatch(client: PublicClient, dep: Deployment, solver
   });
   // Explicit fees: a negligible tip keeps the real cost at the base fee we charged against.
   const base = (await client.getBlock({ blockTag: 'latest' })).baseFeePerGas ?? 0n;
-  const hash = await walletClient(solver).writeContract({ ...(request as object), maxPriorityFeePerGas: 1_000n, maxFeePerGas: base * 2n + 1_000n } as never);
+  // Explicit gas limit with headroom. Sending with the bare estimate ran out of gas live (QMS testnet, a sell
+  // that touched cold token storage: gasUsed == gasLimit). Unused gas is refunded, so the margin costs nothing,
+  // and the network fee users pay is computed separately from the estimate (applyNetworkFees).
+  const estimate = await client.estimateContractGas({ ...(request as object), account: solver } as never);
+  const gas = (estimate * 13n) / 10n + 50_000n;
+  const hash = await walletClient(solver).writeContract({ ...(request as object), gas, maxPriorityFeePerGas: 1_000n, maxFeePerGas: base * 2n + 1_000n } as never);
   const receipt = await waitForConfirmations(client, hash, confirmations);
   const receipts: BatchResult['receipts'] = [];
   for (const log of receipt.logs) {

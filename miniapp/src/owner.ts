@@ -17,6 +17,7 @@ export const accountAbi = parseAbi([
   'function revokeSession()',
   'function setTokenLimit(address token, uint128 perTrade, uint128 perDay)',
   'function setAnyBuyToken(bool any)',
+  'function setBuyTokenAllowed(address token, bool allowed)',
   'function executeBatch(address[] targets, uint256[] values, bytes[] datas)',
   'function execute(address target, uint256 value, bytes data)',
   'struct TokenLimit { address token; uint128 perTrade; uint128 perDay; }',
@@ -70,6 +71,19 @@ export const actions = {
   editLimits(wallet: Address, limits: { token: Address; perTrade: bigint; perDay: bigint }[]) {
     const datas = limits.map((l) => encodeFunctionData({ abi: accountAbi, functionName: 'setTokenLimit', args: [l.token, l.perTrade, l.perDay] }));
     return encodeFunctionData({ abi: accountAbi, functionName: 'executeBatch', args: [limits.map(() => wallet), limits.map(() => 0n), datas] });
+  },
+  /**
+   * Chat-trading approval for one token, as one signed action: Qalibre may buy it, and may sell it back.
+   * The sell limit is unbounded in token units because selling only ever returns QMS to this same wallet,
+   * always at or above a direct swap's price; spending QMS stays capped by the QMS limits.
+   */
+  approveToken(wallet: Address, token: Address) {
+    const MAX = 2n ** 128n - 1n;
+    const datas = [
+      encodeFunctionData({ abi: accountAbi, functionName: 'setBuyTokenAllowed', args: [token, true] }),
+      encodeFunctionData({ abi: accountAbi, functionName: 'setTokenLimit', args: [token, MAX, MAX] }),
+    ];
+    return encodeFunctionData({ abi: accountAbi, functionName: 'executeBatch', args: [[wallet, wallet], [0n, 0n], datas] });
   },
   send(token: Address, to: Address, amount: bigint) {
     return encodeFunctionData({ abi: accountAbi, functionName: 'execute', args: [token, 0n, encodeFunctionData({ abi: erc20, functionName: 'transfer', args: [to, amount] })] });

@@ -8,6 +8,7 @@ import type { Db } from './db.js';
 import { verifyInitData, type TelegramUser } from './telegram.js';
 import { UserError, type Service } from './service.js';
 import type { OwnerOps } from './ownerops.js';
+import { checkToken } from './tokens.js';
 
 const MAX_BODY = 16 * 1024;
 
@@ -163,6 +164,14 @@ export function startApi(db: Db, svc: Service, owner: OwnerOps) {
       }
       if (req.method === 'POST' && url.pathname === '/api/test-funds') {
         return send(res, 200, await svc.requestTestFunds(user.id), origin);
+      }
+      if (req.method === 'GET' && url.pathname === '/api/token') {
+        const address = url.searchParams.get('address') ?? '';
+        if (!isAddress(address)) throw new UserError('Invalid token address.');
+        const s = await checkToken(address as Address).catch(() => {
+          throw new UserError('That address is not a token Qalibre can read.');
+        });
+        return send(res, 200, s, origin);
       }
       if (req.method === 'GET' && url.pathname === '/api/quote') {
         const sell = url.searchParams.get('sell') ?? '';
