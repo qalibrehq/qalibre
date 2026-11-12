@@ -3,12 +3,14 @@ import type { Db } from './db.js';
 import { Bot, esc } from './telegram.js';
 import type { Service } from './service.js';
 import type { Chat } from './chat.js';
+import type { Social } from './social.js';
 
 interface Update {
   update_id: number;
   message?: { message_id: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string; is_bot?: boolean }; text?: string };
   callback_query?: { id: string; from: { id: number }; data?: string; message?: { message_id: number; chat: { id: number; type: string } } };
   inline_query?: { id: string; from: { id: number }; query: string };
+  my_chat_member?: { chat: { id: number; type: string; title?: string }; new_chat_member: { status: string } };
 }
 
 function openButton() {
@@ -27,6 +29,9 @@ export async function setupBot(bot: Bot) {
       { command: 'limits', description: 'Your trading limits' },
       { command: 'revoke', description: 'Turn trading off' },
       { command: 'balance', description: 'Balance and savings' },
+      { command: 'savings', description: 'Your savings card' },
+      { command: 'invite', description: 'Invite friends, earn from our fee' },
+      { command: 'stats', description: 'What Qalibre has saved everyone' },
       { command: 'how', description: 'How a batch works' },
       { command: 'fees', description: 'What you pay, and when' },
       { command: 'security', description: 'Who controls your funds' },
@@ -51,22 +56,41 @@ export async function setupBot(bot: Bot) {
   }
 }
 
-export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat) {
+export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Social) {
   let offset = 0;
   let stopped = false;
 
   async function handle(u: Update) {
-    if (u.callback_query) return chat.onCallback(u.callback_query);
+    if (u.my_chat_member) return social.onMembership(u.my_chat_member);
+    if (u.callback_query) {
+      const q = u.callback_query;
+      const d = q.data ?? '';
+      // Share buttons (private chat only; ownership is checked inside).
+      if (q.message?.chat.type === 'private' && (d.startsWith('f:') || d.startsWith('sp:') || d === 'sv')) {
+        await bot.answer(q.id, 'Making your card');
+        if (/^f:[0-9a-f-]{36}$/.test(d)) return social.shareFill(q.from.id, d.slice(2));
+        if (d === 'sv') return social.shareSavings(q.from.id);
+        const card = d.startsWith('sp:') ? db.getCard(d.slice(3)) : undefined;
+        if (card && card.tg_id === q.from.id) return social.sharePosition(q.from.id, card.token as `0x${string}`);
+        return;
+      }
+      return chat.onCallback(q);
+    }
     if (u.inline_query) return chat.onInlineQuery(u.inline_query);
     const msg = u.message;
     if (!msg?.text || !msg.from || msg.from.is_bot) return;
-    if (msg.chat.type !== 'private') return chat.onGroupText(msg.chat.id, msg.text, msg.message_id);
+    if (msg.chat.type !== 'private') return social.onGroupMessage(msg.chat.id, msg.text, msg.message_id, msg.from.id);
     const id = msg.from.id;
     db.upsertUser(id, msg.from.first_name ?? null);
     const [first = '', payload = ''] = msg.text.trim().split(/\s+/);
     const cmd = first.toLowerCase().replace(/@\w+$/, '');
 
     if (cmd === '/start' && payload && (await chat.onStartPayload(id, payload))) return;
+    // An invite link: remember the inviter, then continue to the normal welcome.
+    if (cmd === '/start' && payload) social.applyInvite(id, payload);
+    if (cmd === '/invite') return social.inviteMessage(id);
+    if (cmd === '/savings') return social.shareSavings(id);
+    if (cmd === '/stats') return social.statsMessage(id);
     if (await chat.onPrivateText(id, msg.text, msg.message_id)) return;
 
     if (cmd === '/start') {
@@ -160,7 +184,7 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat) {
   (async () => {
     while (!stopped) {
       try {
-        const updates = await bot.call<Update[]>('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'callback_query', 'inline_query'] });
+        const updates = await bot.call<Update[]>('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'callback_query', 'inline_query', 'my_chat_member'] });
         for (const u of updates) {
           offset = u.update_id + 1;
           await handle(u).catch((e) => console.error('bot handler', (e as Error).message));

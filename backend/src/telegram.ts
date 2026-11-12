@@ -68,6 +68,24 @@ export class Bot {
     return json.result;
   }
 
+  /** Send a PNG we rendered (multipart upload), with an HTML caption and optional buttons. */
+  async sendPhoto(chatId: number, png: Buffer, caption: string, extra: Record<string, unknown> = {}, retries = 2): Promise<{ message_id: number }> {
+    const form = new FormData();
+    form.set('chat_id', String(chatId));
+    form.set('caption', caption);
+    form.set('parse_mode', 'HTML');
+    for (const [k, v] of Object.entries(extra)) form.set(k, typeof v === 'string' ? v : JSON.stringify(v));
+    form.set('photo', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'qalibre.png');
+    const res = await fetch(`https://api.telegram.org/bot${this.token}/sendPhoto`, { method: 'POST', body: form, signal: AbortSignal.timeout(30_000) });
+    const json = (await res.json()) as { ok: boolean; result: { message_id: number }; description?: string; parameters?: { retry_after?: number } };
+    if (!json.ok && res.status === 429 && retries > 0) {
+      await new Promise((r) => setTimeout(r, Math.min(30, json.parameters?.retry_after ?? 2) * 1000));
+      return this.sendPhoto(chatId, png, caption, extra, retries - 1);
+    }
+    if (!json.ok) throw new TelegramError('sendPhoto', json.description ?? String(res.status));
+    return json.result;
+  }
+
   editMessage(chatId: number, messageId: number, text: string, extra: Record<string, unknown> = {}) {
     return this.call('editMessageText', { chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML', disable_web_page_preview: true, ...extra }).catch((e) => {
       // Editing to identical content is not an error for us.

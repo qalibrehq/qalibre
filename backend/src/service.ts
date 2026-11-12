@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { hashTypedData, type Address, type Hex, isAddress, getAddress } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { config, TOKENS } from './config.js';
-import { checkToken, poolOf, tokenInfo, type TokenInfo } from './tokens.js';
+import { checkToken, poolOf, qmsUsd, tokenInfo, type TokenInfo } from './tokens.js';
+import { feeQms, savedQms } from './value.js';
 import { decrypt, encrypt } from './crypto.js';
 import type { Db, OrderRow } from './db.js';
 import { QalibreAccountFactoryAbi } from '../../solver/src/abi/QalibreAccountFactory.js';
@@ -27,6 +28,9 @@ import { clearPair, type PairOrder } from '../../solver/src/clearing.js';
 import { getAmountOut } from '../../solver/src/amm.js';
 
 export class UserError extends Error {}
+/** Inviters earn this share of Qalibre's fee on their friends' trades, for this many days after the invite. */
+export const REFERRAL_SHARE_BPS = 2_000;
+export const REFERRAL_DAYS = 90;
 /** The owner must approve this token once (signed on their phone) before Qalibre may trade it. */
 export class NeedsApproval extends UserError {
   constructor(readonly token: Address) {
@@ -355,6 +359,18 @@ export function createService(db: Db, notify: Notify) {
   let lastRunAt = 0;
   const pairKey = (o: { sell_token: string; buy_token: string }) => [o.sell_token.toLowerCase(), o.buy_token.toLowerCase()].sort().join('/');
 
+  /**
+   * Referral reward: a share of Qalibre's own fee on this fill, for the inviter, during the first months.
+   * It comes out of our fee only, so the trader pays exactly the same with or without an inviter.
+   */
+  function accrueReferral(o: OrderRow) {
+    const u = db.getUser(o.tg_id);
+    if (!u?.referrer_tg || !u.referred_at) return;
+    if (Date.now() / 1000 - u.referred_at > REFERRAL_DAYS * 86_400) return;
+    const amount = (feeQms(o) * BigInt(REFERRAL_SHARE_BPS)) / 10_000n;
+    if (amount > 0n) db.addReward({ orderId: o.id, referrer: u.referrer_tg, referee: o.tg_id, amountQms: amount.toString() });
+  }
+
   /** How long until the oldest waiting order is guaranteed to run (0 when something can run now). */
   function msToNextBatch(): number {
     const pending = db.pendingOrders();
@@ -444,6 +460,7 @@ export function createService(db: Db, notify: Notify) {
                 if (!q) continue;
                 db.markFilled(q.id, { tx: r.hash, buy: rec.buyAmount.toString(), fee: rec.fee.toString(), networkFee: rec.networkFee.toString(), direct: rec.directQuote.toString(), batchId });
                 const row = db.getOrder(q.id)!;
+                accrueReferral(row);
                 void fillMessage(row).then((html) => notify(row.tg_id, html, { order: row, kind: 'filled' }));
               }
               void waitForConfirmations(client, r.hash, config.finalConfirmations)
@@ -618,12 +635,9 @@ export function createService(db: Db, notify: Notify) {
     const qms = Number(wqms) / 1e18;
     const unwrapped = Number(native) / 1e18;
     const usd = Number(usdc) / 1e6;
-    const filled = db.userOrders(tgId, 200).filter((o) => o.status === 'filled');
-    let savedUsd = 0;
-    for (const o of filled) {
-      const diff = BigInt(o.buy_amount!) - BigInt(o.direct_quote!);
-      savedUsd += o.buy_token.toLowerCase() === TOKENS.USDC.toLowerCase() ? Number(diff) / 1e6 : (Number(diff) / 1e18) * usdcPerQms;
-    }
+    // Savings valued in QMS at each fill's own price (one definition everywhere: src/value.ts), then in USD now.
+    const filled = db.filledOrders(tgId);
+    const savedUsd = (Number(filled.reduce((s, o) => s + savedQms(o), 0n)) / 1e18) * usdcPerQms;
     // Tokens bought through chat trading, valued at what selling them now would return.
     const pos = (await positions(tgId).catch(() => [])).map((p) => {
       const valueUsd = (Number(p.exitQms) / 1e18) * usdcPerQms;
@@ -651,11 +665,28 @@ export function createService(db: Db, notify: Notify) {
     };
   }
 
+  /** Public numbers: what everyone has saved versus swapping directly. Cached for a minute. */
+  let statsCache: { at: number; v: { savedUsd: number; trades: number; traders: number; groups: number; since: number } } | null = null;
+  async function publicStats() {
+    if (statsCache && Date.now() - statsCache.at < 60_000) return statsCache.v;
+    const filled = db.filledOrders();
+    const usd = await qmsUsd();
+    const v = {
+      savedUsd: (Number(filled.reduce((s, o) => s + savedQms(o), 0n)) / 1e18) * usd,
+      trades: filled.length,
+      traders: new Set(filled.map((o) => o.tg_id)).size,
+      groups: db.groupCount(),
+      since: filled[0]?.created_at ?? Math.floor(Date.now() / 1000),
+    };
+    statsCache = { at: Date.now(), v };
+    return v;
+  }
+
   function batchStatus() {
     return { nextBatchInMs: msToNextBatch(), waiting: db.countPending(), batch: db.lastBatchId() + 1, intervalMs: config.bestWindowMs, lastRunAt };
   }
 
-  return { prepareRegistration, completeRegistration, quote, placeOrder, runBatch, portfolio, positions, tradeContext, batchStatus, fillMessage, requestTestFunds, isRegistered: (tgId: number) => isCurrent(db.getUser(tgId)), deployment: dep };
+  return { prepareRegistration, completeRegistration, quote, placeOrder, runBatch, portfolio, positions, tradeContext, publicStats, batchStatus, fillMessage, requestTestFunds, isRegistered: (tgId: number) => isCurrent(db.getUser(tgId)), deployment: dep };
 }
 
 export function trimUnits(v: bigint, decimals: number, maxFrac = 6): string {

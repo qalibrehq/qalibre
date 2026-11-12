@@ -284,8 +284,11 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
     const isChatToken = tokenAddr.toLowerCase() !== WQMS && tokenAddr.toLowerCase() !== TOKENS.USDC.toLowerCase();
     if (isChatToken && kind === 'filled') {
       const card = newCard(tgId, tokenAddr);
-      kb.push(SELL_PCTS.map((p) => ({ text: p === 100 ? 'Sell all' : `Sell ${p}%`, callback_data: `c:${card}:s${p}` })));
-      kb.push([{ text: 'Token card', callback_data: `c:${card}:r` }]);
+      const bought = o.sell_token.toLowerCase() === WQMS; // a buy: offer the exits
+      if (bought) kb.push(SELL_PCTS.map((p) => ({ text: p === 100 ? 'Sell all' : `Sell ${p}%`, callback_data: `c:${card}:s${p}` })));
+      kb.push([{ text: 'Share', callback_data: `f:${o.id}` }, { text: 'Token card', callback_data: `c:${card}:r` }]);
+    } else if (kind === 'filled') {
+      kb.push([{ text: 'Share', callback_data: `f:${o.id}` }]);
     }
     try {
       await bot.editMessage(tgId, o.status_msg_id, html, kb.length ? { reply_markup: { inline_keyboard: kb } } : {});
@@ -318,10 +321,15 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       const pnl = x.pnlPct === null ? 'cost unknown' : `${x.pnlPct >= 0 ? '+' : ''}${x.pnlPct.toFixed(1)}%`;
       lines.push(`<b>${esc(x.token.symbol)}</b>  ${fmtToken(x.balance, x.token.decimals)}  ·  ${fmtSig(exit)} QMS  ·  ${pnl}`);
       const card = newCard(tgId, x.token.address);
-      kb.push([{ text: x.token.symbol, callback_data: `c:${card}:r` }, { text: `Sell all ${x.token.symbol}`, callback_data: `c:${card}:s100` }]);
+      kb.push([
+        { text: x.token.symbol, callback_data: `c:${card}:r` },
+        ...(x.pnlPct !== null ? [{ text: 'Share', callback_data: `sp:${card}` }] : []),
+        { text: 'Sell all', callback_data: `c:${card}:s100` },
+      ]);
     }
     if (pos.length) lines.push('', '<i>Token values are what selling all of it would return from the pool right now. Profit counts only tokens bought through Qalibre.</i>');
     else lines.push('', 'Paste a token address to see its card and trade it here.');
+    if (p.trades > 0) kb.push([{ text: 'Share my savings', callback_data: 'sv' }]);
     const url = appUrl({});
     if (url) kb.push([{ text: 'Open Qalibre', web_app: { url } }]);
     await bot.sendMessage(tgId, lines.join('\n'), { reply_markup: { inline_keyboard: kb } });
@@ -430,26 +438,6 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
     return true;
   }
 
-  /** Group chats: never trade. Show a read-only card that opens the private chat. */
-  async function onGroupText(chatId: number, text: string, messageId: number) {
-    const [first = '', ...rest] = text.trim().split(/\s+/);
-    const cmd = first.toLowerCase();
-    if (!/^\/(buy|token|check)(@\w+)?$/.test(cmd)) return;
-    if (cmd.includes('@') && !cmd.endsWith('@' + username.toLowerCase())) return;
-    const addr = rest.join(' ').match(/0x[0-9a-fA-F]{40}/);
-    if (!addr) {
-      await bot.sendMessage(chatId, 'Use <code>/token 0x…</code> with a token address.', { reply_parameters: { message_id: messageId, allow_sending_without_reply: true } });
-      return;
-    }
-    if (!rateOk(-chatId, 6, 60_000)) return;
-    try {
-      const c = await publicCard(getAddress(addr[0]) as Address);
-      await bot.sendMessage(chatId, c.text, { reply_markup: { inline_keyboard: c.keyboard }, reply_parameters: { message_id: messageId, allow_sending_without_reply: true } });
-    } catch {
-      await bot.sendMessage(chatId, 'That address is not a token Qalibre can read.', { reply_parameters: { message_id: messageId, allow_sending_without_reply: true } });
-    }
-  }
-
   async function onInlineQuery(q: { id: string; from: { id: number }; query: string }) {
     const addr = q.query.match(/0x[0-9a-fA-F]{40}/);
     const results: unknown[] = [];
@@ -547,7 +535,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
     await sellPct(tgId, info.token, pct);
   }
 
-  return { onPrivateText, onStartPayload, onGroupText, onInlineQuery, onCallback, onOrderUpdate, renderCard, publicCard };
+  return { onPrivateText, onStartPayload, onInlineQuery, onCallback, onOrderUpdate, renderCard, publicCard };
 }
 
 export type Chat = ReturnType<typeof createChat>;

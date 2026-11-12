@@ -1,4 +1,7 @@
-import { DatabaseSync } from 'node:sqlite';
+import { createRequire } from 'node:module';
+import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
+// Loaded through Node's own resolver: some bundlers (vitest/vite) do not yet know the node:sqlite built-in.
+const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: typeof DatabaseSyncType };
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -14,6 +17,9 @@ export interface UserRow {
   dripped: number;
   last_drip_at: number;
   created_at: number;
+  ref_code: string | null;
+  referrer_tg: number | null;
+  referred_at: number | null;
 }
 
 export interface OrderRow {
@@ -90,6 +96,26 @@ export function openDb(path: string) {
       token TEXT NOT NULL,
       created_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS groups (
+      chat_id INTEGER PRIMARY KEY,
+      title TEXT,
+      alerts INTEGER NOT NULL DEFAULT 1,
+      added_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS group_alerts (
+      chat_id INTEGER NOT NULL,
+      token TEXT NOT NULL,
+      at INTEGER NOT NULL,
+      PRIMARY KEY (chat_id, token)
+    );
+    CREATE TABLE IF NOT EXISTS referral_rewards (
+      order_id TEXT PRIMARY KEY,
+      referrer_tg INTEGER NOT NULL,
+      referee_tg INTEGER NOT NULL,
+      amount_qms TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      paid_tx TEXT
+    );
     CREATE TABLE IF NOT EXISTS batches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tx_hash TEXT,
@@ -100,12 +126,17 @@ export function openDb(path: string) {
     );
   `);
 
-  for (const ddl of ['ALTER TABLE users ADD COLUMN pending_session_address TEXT', 'ALTER TABLE users ADD COLUMN pending_session_enc TEXT', 'ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN max_network_fee TEXT NOT NULL DEFAULT '0'", 'ALTER TABLE orders ADD COLUMN network_fee TEXT', 'ALTER TABLE users ADD COLUMN settlement TEXT', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER', 'ALTER TABLE orders ADD COLUMN status_msg_id INTEGER']) {
+  for (const ddl of ['ALTER TABLE users ADD COLUMN pending_session_address TEXT', 'ALTER TABLE users ADD COLUMN pending_session_enc TEXT', 'ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN max_network_fee TEXT NOT NULL DEFAULT '0'", 'ALTER TABLE orders ADD COLUMN network_fee TEXT', 'ALTER TABLE users ADD COLUMN settlement TEXT', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER', 'ALTER TABLE orders ADD COLUMN status_msg_id INTEGER', 'ALTER TABLE users ADD COLUMN ref_code TEXT', 'ALTER TABLE users ADD COLUMN referrer_tg INTEGER', 'ALTER TABLE users ADD COLUMN referred_at INTEGER']) {
     try {
       db.exec(ddl);
     } catch {
       /* column exists */
     }
+  }
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_ref_code ON users(ref_code)');
+  } catch {
+    /* exists */
   }
   const now = () => Math.floor(Date.now() / 1000);
   return {
@@ -157,6 +188,12 @@ export function openDb(path: string) {
     userOrders(tgId: number, limit = 30): OrderRow[] {
       return db.prepare('SELECT * FROM orders WHERE tg_id = ? ORDER BY created_at DESC LIMIT ?').all(tgId, limit) as unknown as OrderRow[];
     },
+    /** Every filled order, for one user or (no argument) everyone, oldest first. */
+    filledOrders(tgId?: number): OrderRow[] {
+      return (tgId === undefined
+        ? db.prepare("SELECT * FROM orders WHERE status = 'filled' ORDER BY created_at").all()
+        : db.prepare("SELECT * FROM orders WHERE status = 'filled' AND tg_id = ? ORDER BY created_at").all(tgId)) as unknown as OrderRow[];
+    },
     markFilled(id: string, f: { tx: string; buy: string; fee: string; networkFee: string; direct: string; batchId: number }) {
       db.prepare("UPDATE orders SET status = 'filled', tx_hash = ?, buy_amount = ?, fee = ?, network_fee = ?, direct_quote = ?, batch_id = ?, updated_at = ? WHERE id = ?").run(f.tx, f.buy, f.fee, f.networkFee, f.direct, f.batchId, now(), id);
     },
@@ -189,6 +226,77 @@ export function openDb(path: string) {
     setStatusMessage(orderId: string, messageId: number) {
       db.prepare('UPDATE orders SET status_msg_id = ? WHERE id = ?').run(messageId, orderId);
     },
+    // ---- Referrals --------------------------------------------------------------------------
+    /** The user's invite code, created on first request. */
+    refCode(tgId: number, make: () => string): string {
+      const u = db.prepare('SELECT ref_code FROM users WHERE tg_id = ?').get(tgId) as { ref_code: string | null } | undefined;
+      if (u?.ref_code) return u.ref_code;
+      for (let i = 0; i < 5; i++) {
+        const code = make();
+        try {
+          db.prepare('UPDATE users SET ref_code = ? WHERE tg_id = ?').run(code, tgId);
+          return code;
+        } catch {
+          /* collision on the unique index: try another */
+        }
+      }
+      throw new Error('could not allocate an invite code');
+    },
+    userByRefCode(code: string): UserRow | undefined {
+      return db.prepare('SELECT * FROM users WHERE ref_code = ?').get(code) as UserRow | undefined;
+    },
+    /** Attach a referrer once, only to a user without a wallet yet and never to themselves. */
+    setReferrer(tgId: number, referrerTg: number): boolean {
+      const r = db.prepare('UPDATE users SET referrer_tg = ?, referred_at = ? WHERE tg_id = ? AND referrer_tg IS NULL AND account IS NULL AND tg_id != ?').run(referrerTg, now(), tgId, referrerTg);
+      return Number(r.changes) === 1;
+    },
+    addReward(r: { orderId: string; referrer: number; referee: number; amountQms: string }) {
+      db.prepare('INSERT OR IGNORE INTO referral_rewards (order_id, referrer_tg, referee_tg, amount_qms, created_at) VALUES (?, ?, ?, ?, ?)').run(r.orderId, r.referrer, r.referee, r.amountQms, now());
+    },
+    referralStats(tgId: number) {
+      const invited = (db.prepare('SELECT count(*) AS n FROM users WHERE referrer_tg = ?').get(tgId) as { n: number }).n;
+      const trading = (db.prepare('SELECT count(*) AS n FROM users WHERE referrer_tg = ? AND account IS NOT NULL').get(tgId) as { n: number }).n;
+      const rows = db.prepare('SELECT amount_qms, paid_tx FROM referral_rewards WHERE referrer_tg = ?').all(tgId) as { amount_qms: string; paid_tx: string | null }[];
+      const earned = rows.reduce((s, r) => s + BigInt(r.amount_qms), 0n);
+      const paid = rows.filter((r) => r.paid_tx).reduce((s, r) => s + BigInt(r.amount_qms), 0n);
+      return { invited, trading, earned, paid };
+    },
+    unpaidRewards(): { referrer_tg: number; total: string; ids: string }[] {
+      return db.prepare("SELECT referrer_tg, CAST(sum(CAST(amount_qms AS INTEGER)) AS TEXT) AS total, group_concat(order_id) AS ids FROM referral_rewards WHERE paid_tx IS NULL GROUP BY referrer_tg").all() as { referrer_tg: number; total: string; ids: string }[];
+    },
+    markRewardsPaid(orderIds: string[], tx: string) {
+      const st = db.prepare('UPDATE referral_rewards SET paid_tx = ? WHERE order_id = ? AND paid_tx IS NULL');
+      for (const id of orderIds) st.run(tx, id);
+    },
+
+    // ---- Groups ------------------------------------------------------------------------------
+    upsertGroup(chatId: number, title: string | null) {
+      db.prepare('INSERT INTO groups (chat_id, title, added_at) VALUES (?, ?, ?) ON CONFLICT(chat_id) DO UPDATE SET title = excluded.title').run(chatId, title, now());
+    },
+    groupAlerts(chatId: number): boolean {
+      const g = db.prepare('SELECT alerts FROM groups WHERE chat_id = ?').get(chatId) as { alerts: number } | undefined;
+      return g ? g.alerts === 1 : true;
+    },
+    setGroupAlerts(chatId: number, on: boolean) {
+      db.prepare('INSERT INTO groups (chat_id, alerts, added_at) VALUES (?, ?, ?) ON CONFLICT(chat_id) DO UPDATE SET alerts = excluded.alerts').run(chatId, on ? 1 : 0, now());
+    },
+    /** True if this token was already flagged in this chat within `withinSec`; otherwise records it now. */
+    alertSeen(chatId: number, token: string, withinSec: number): boolean {
+      const r = db.prepare('SELECT at FROM group_alerts WHERE chat_id = ? AND token = ?').get(chatId, token.toLowerCase()) as { at: number } | undefined;
+      if (r && now() - r.at < withinSec) return true;
+      db.prepare('INSERT OR REPLACE INTO group_alerts (chat_id, token, at) VALUES (?, ?, ?)').run(chatId, token.toLowerCase(), now());
+      return false;
+    },
+    hasGroup(chatId: number): boolean {
+      return Boolean(db.prepare('SELECT 1 FROM groups WHERE chat_id = ?').get(chatId));
+    },
+    getBatch(id: number): { id: number; tx_hash: string; block: number } | undefined {
+      return db.prepare('SELECT id, tx_hash, block FROM batches WHERE id = ?').get(id) as { id: number; tx_hash: string; block: number } | undefined;
+    },
+    groupCount(): number {
+      return (db.prepare('SELECT count(*) AS n FROM groups').get() as { n: number }).n;
+    },
+
     lastBatchId(): number {
       return (db.prepare('SELECT coalesce(max(id), 0) AS n FROM batches').get() as { n: number }).n;
     },

@@ -6,6 +6,7 @@ import { startApi } from './api.js';
 import { setupBot, startBot } from './bot.js';
 import { createOwnerOps } from './ownerops.js';
 import { createChat, type Chat } from './chat.js';
+import { createSocial } from './social.js';
 
 const db = openDb(config.dbPath);
 const bot = new Bot(config.botToken);
@@ -19,7 +20,7 @@ const svc = createService(db, async (tgId, html, ctx) => {
 const me = await bot.call<{ username: string }>('getMe');
 chat = createChat({ bot, db, svc, username: me.username });
 await setupBot(bot).catch((e) => console.error('bot setup', (e as Error).message));
-startBot(bot, db, svc, chat);
+startBot(bot, db, svc, chat, createSocial({ bot, db, svc, username: me.username }));
 startApi(db, svc, createOwnerOps(db));
 
 setInterval(() => void svc.runBatch(), config.tickMs);

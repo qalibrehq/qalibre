@@ -129,6 +129,8 @@ export function startApi(db: Db, svc: Service, owner: OwnerOps) {
     }
     try {
       if (url.pathname === '/api/health') return send(res, 200, { ok: true, ...svc.batchStatus() }, origin);
+      // Public: the savings counter, shown on the website and in /stats.
+      if (req.method === 'GET' && url.pathname === '/api/stats') return send(res, 200, await svc.publicStats(), origin);
 
       // Everything else requires a verified Telegram user.
       const user: TelegramUser | null = verifyInitData(String(req.headers['x-telegram-init-data'] ?? ''), config.botToken);
