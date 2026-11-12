@@ -77,7 +77,7 @@ const SECURITY_HEADERS = {
     "script-src 'self' https://telegram.org",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src https://fonts.gstatic.com",
-    "img-src 'self' data:",
+    "img-src 'self' data: https://t.me https://*.t.me https://*.telesco.pe", // Telegram profile photos
     "connect-src 'self'",
     "frame-ancestors https://web.telegram.org https://*.telegram.org",
   ].join('; '),

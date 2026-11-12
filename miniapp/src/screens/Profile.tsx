@@ -2,6 +2,7 @@ import { fromUnits, usd, type Me } from '../api';
 import { haptic, openChat, openLink } from '../tg';
 import { Back } from '../ui/Brand';
 import { Icon } from '../ui/Icons';
+import { Avatar } from '../ui/Avatar';
 import type { Nav } from '../App';
 
 async function copy(text: string) {
@@ -48,9 +49,7 @@ export function Profile({ me, nav, toast }: { me: Me; nav: Nav; toast: (m: strin
       </div>
 
       <div style={{ marginTop: 22, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 76, height: 76, borderRadius: 38, background: 'var(--green)', color: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, fontWeight: 600 }}>
-          {name.slice(0, 1).toUpperCase()}
-        </div>
+        <Avatar name={me.firstName} size={80} />
         <p style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>{name}</p>
         {me.account && (
           <button className="chip num" onClick={() => copyWith(me.account!, 'Wallet address copied.')}>

@@ -4,6 +4,7 @@ import { haptic, openChat } from '../tg';
 import { Wordmark } from '../ui/Brand';
 import { Icon } from '../ui/Icons';
 import { TokenIcon } from '../ui/TokenIcon';
+import { Avatar } from '../ui/Avatar';
 import { TabBar } from '../ui/TabBar';
 import { TestFundsButton } from '../ui/TestFunds';
 import type { Nav } from '../App';
@@ -58,7 +59,6 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
   const total = useCountUp(me.totalUsd ?? 0);
   const [whole, cents] = usd(total).split('.');
   const saved = me.savedUsd ?? 0;
-  const initial = (me.firstName ?? 'Q').slice(0, 1).toUpperCase();
 
   async function receive() {
     haptic.tap();
@@ -75,8 +75,8 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
     <div className="screen fade-in" style={{ paddingBottom: 0 }}>
       <div className="bar">
         <Wordmark width={84} />
-        <button onClick={() => { haptic.select(); nav('profile'); }} aria-label="Profile" style={{ width: 36, height: 36, borderRadius: 18, border: 0, background: 'var(--green)', color: 'var(--paper)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-          {initial}
+        <button onClick={() => { haptic.select(); nav('profile'); }} aria-label="Profile" style={{ width: 38, height: 38, padding: 0, borderRadius: 19, border: 0, background: 'transparent', cursor: 'pointer' }}>
+          <Avatar name={me.firstName} size={38} />
         </button>
       </div>
 

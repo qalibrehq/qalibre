@@ -1,7 +1,7 @@
 /** Thin wrapper over the Telegram Mini App runtime (telegram-web-app.js). Safe outside Telegram. */
 interface TgWebApp {
   initData: string;
-  initDataUnsafe?: { user?: { id: number; first_name?: string } };
+  initDataUnsafe?: { user?: { id: number; first_name?: string; photo_url?: string } };
   version: string;
   ready(): void;
   expand(): void;
@@ -59,6 +59,12 @@ export function openLink(url: string) {
 export function openChat(bot?: string) {
   if (bot && tg?.openTelegramLink) tg.openTelegramLink(`https://t.me/${bot}`);
   else if (tg?.close) tg.close();
+}
+
+/** The user's Telegram profile photo, when they allow it (https only). */
+export function photoUrl(): string | undefined {
+  const u = tg?.initDataUnsafe?.user?.photo_url;
+  return u && u.startsWith('https://') ? u : undefined;
 }
 
 export function firstName(): string | undefined {
