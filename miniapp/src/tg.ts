@@ -10,6 +10,7 @@ interface TgWebApp {
   enableClosingConfirmation?(): void;
   disableVerticalSwipes?(): void;
   openLink(url: string): void;
+  openTelegramLink?(url: string): void;
   close?(): void;
   isVersionAtLeast?(v: string): boolean;
   HapticFeedback?: { impactOccurred(s: 'light' | 'medium' | 'rigid' | 'soft' | 'heavy'): void; notificationOccurred(t: 'success' | 'warning' | 'error'): void; selectionChanged(): void };
@@ -52,6 +53,12 @@ export const haptic = {
 export function openLink(url: string) {
   if (tg) tg.openLink(url);
   else window.open(url, '_blank', 'noopener');
+}
+
+/** Back to the chat with the bot: the place to trade. */
+export function openChat(bot?: string) {
+  if (bot && tg?.openTelegramLink) tg.openTelegramLink(`https://t.me/${bot}`);
+  else if (tg?.close) tg.close();
 }
 
 export function firstName(): string | undefined {

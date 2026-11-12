@@ -38,6 +38,10 @@ export interface Me {
   /** Tokens bought through chat trading. `balance` is in base units; value is what selling all would return now. */
   positions?: { symbol: string; name: string; token: string; decimals: number; balance: string; amount: number; valueUsd: number; pnlPct: number | null }[];
   totalUsd?: number;
+  /** The user's invite link and what it has earned (QMS amounts in base units). */
+  invite?: { link: string; invited: number; trading: number; earnedQms: string; paidQms: string; sharePct: number; days: number };
+  /** The bot's username, to return to the chat. */
+  bot?: string;
   savedUsd?: number;
   trades?: number;
   session?: { active: boolean; validUntil: number; anyBuyToken?: boolean };

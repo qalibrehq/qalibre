@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api';
 import { haptic } from '../tg';
+import { Icon } from './Icons';
 
 /** One tap: tradeable test QMS and USDC, once a day. Testnet only. */
 export function TestFundsButton({ onDone, toast, variant = 'row' }: { onDone: () => void; toast: (m: string) => void; variant?: 'row' | 'button' }) {
@@ -29,12 +30,13 @@ export function TestFundsButton({ onDone, toast, variant = 'row' }: { onDone: ()
     );
   }
   return (
-    <button onClick={go} disabled={busy} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 0', border: 0, borderBottom: '1px solid var(--rule)', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
-      <span>
-        <span style={{ display: 'block', fontSize: 15, fontWeight: 500 }}>Add funds</span>
-        <span className="muted" style={{ display: 'block', fontSize: 13, marginTop: 2 }}>Free test QMS and USDC, once a day</span>
+    <button className="item" onClick={go} disabled={busy}>
+      <span className="disc-sm" aria-hidden="true"><Icon name="drop" size={20} /></span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: 'block', fontWeight: 500 }}>{busy ? 'Sending test funds…' : 'Get test funds'}</span>
+        <span className="sub" style={{ display: 'block' }}>Free test QMS and USDC, once a day</span>
       </span>
-      <span className="green" style={{ fontSize: 14, fontWeight: 600 }}>{busy ? 'Sending…' : 'Get test funds'}</span>
+      <span className="chev"><Icon name="chevron" size={18} /></span>
     </button>
   );
 }

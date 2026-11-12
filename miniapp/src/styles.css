@@ -48,16 +48,50 @@ a { color: var(--green); text-decoration: none; }
   margin: 0 auto;
 }
 .bar { display: flex; align-items: center; justify-content: space-between; height: 40px; }
-.label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; color: var(--graphite); text-transform: uppercase; }
+.label { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
 .muted { color: var(--graphite); }
 .green { color: var(--green); }
 .grow { flex: 1; }
 .spacer { margin-top: auto; }
 
-.rows { display: flex; flex-direction: column; border-top: 1px solid var(--rule); }
-.rows.strong { border-top-color: var(--ink); }
-.row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--rule); font-size: 14px; }
+/* Lists sit in one quiet panel; rows are separated by space, never by lines. */
+.rows { display: flex; flex-direction: column; background: var(--white); border-radius: 18px; padding: 6px 18px; }
+.rows.strong { background: var(--white); }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 0; font-size: 15px; }
 .row > :first-child { color: var(--graphite); }
+
+.surface { background: var(--white); border-radius: 20px; padding: 6px 0; }
+.item {
+  display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 18px; border: 0; background: transparent;
+  text-align: left; font-size: 15px; color: var(--ink); cursor: pointer;
+}
+button.item:active { background: var(--paper); }
+.item .sub { margin: 2px 0 0; font-size: 13px; color: var(--graphite); }
+.item .chev { margin-left: auto; color: var(--muted); flex: none; }
+.section { margin: 30px 0 10px 4px; font-size: 13px; font-weight: 600; color: var(--graphite); }
+.title { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+
+/* Round actions under the balance. */
+.actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.action { display: flex; flex-direction: column; align-items: center; gap: 8px; border: 0; background: transparent; font-size: 13px; font-weight: 500; color: var(--ink); cursor: pointer; padding: 0; }
+.action .disc { width: 56px; height: 56px; border-radius: 28px; background: var(--white); display: flex; align-items: center; justify-content: center; transition: transform 0.12s var(--ease); }
+.action.primary .disc { background: var(--green); color: var(--paper); }
+.action:active .disc { transform: scale(0.94); }
+
+/* Bottom navigation: no rule; the active tab carries a soft pill. */
+.tabbar {
+  position: sticky; bottom: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 24px calc(-1 * var(--gutter)) 0; padding: 8px var(--gutter) calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(to bottom, rgba(246,244,239,0), var(--paper) 30%);
+}
+.tab { border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; font-size: 11px; font-weight: 500; color: var(--graphite); cursor: pointer; }
+.tab .pill { width: 56px; height: 30px; border-radius: 15px; display: flex; align-items: center; justify-content: center; transition: background 0.2s var(--ease); }
+.tab[aria-current='page'] { color: var(--ink); font-weight: 600; }
+.tab[aria-current='page'] .pill { background: var(--white); }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 14px; background: var(--paper-2); font-size: 13px; font-weight: 500; color: var(--ink); border: 0; cursor: pointer; }
+.pill-on { color: var(--green); font-weight: 600; }
+.pill-off { color: var(--danger); font-weight: 600; }
 
 .btn {
   height: 54px; width: 100%; border: 0; border-radius: var(--radius);
@@ -101,3 +135,5 @@ input.pin:focus { outline: 2px solid var(--green); outline-offset: 1px; }
 }
 
 .key:active { background: var(--paper-2) !important; }
+
+.disc-sm { width: 40px; height: 40px; border-radius: 20px; background: var(--paper); display: flex; align-items: center; justify-content: center; flex: none; color: var(--ink); }

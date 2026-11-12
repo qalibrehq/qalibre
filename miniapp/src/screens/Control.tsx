@@ -3,6 +3,8 @@ import type { Me } from '../api';
 import { haptic, openLink } from '../tg';
 import { exportKey, loadVault, WrongPin } from '../wallet';
 import { Back, Wordmark } from '../ui/Brand';
+import { Icon } from '../ui/Icons';
+import { TabBar } from '../ui/TabBar';
 import { Keypad } from '../ui/Keypad';
 import { TestFundsButton } from '../ui/TestFunds';
 import { PinSheet } from '../ui/PinSheet';
@@ -36,7 +38,7 @@ export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: 
   const [key, setKey] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
   const days = me.session ? Math.max(0, Math.round((me.session.validUntil * 1000 - Date.now()) / 86_400_000)) : 0;
-  const short = (a?: string | null) => (a ? `${a.slice(0, 6)} · · · ${a.slice(-4)}` : '');
+  const short = (a?: string | null) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
 
   async function copyAddress() {
     if (!me.account) return;
@@ -145,64 +147,71 @@ export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: 
     );
   }
 
+  const active = Boolean(me.session?.active);
+  const qmsLimit = me.limits?.find((l) => l.symbol === 'QMS');
+  const Row = ({ icon, title, sub, right, onClick }: { icon: string; title: string; sub?: string; right?: React.ReactNode; onClick?: () => void }) => (
+    <button className="item" onClick={onClick ? () => { haptic.select(); onClick(); } : undefined} style={onClick ? undefined : { cursor: 'default' }}>
+      <span className="disc-sm"><Icon name={icon} size={20} /></span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: 'block', fontWeight: 500 }}>{title}</span>
+        {sub && <span className="sub" style={{ display: 'block' }}>{sub}</span>}
+      </span>
+      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
+        {right}
+        {onClick && <span className="chev" style={{ marginLeft: 0 }}><Icon name="chevron" size={18} /></span>}
+      </span>
+    </button>
+  );
+
   return (
-    <div className="screen fade-in">
+    <div className="screen fade-in" style={{ paddingBottom: 0 }}>
       <div className="bar">
-        <button className="icon-btn" aria-label="Back" onClick={() => nav('home')}><Back /></button>
-        <span className="label">Wallet</span>
-        <div style={{ width: 30 }} />
+        <span className="label" style={{ fontSize: 22, letterSpacing: '-0.02em' }}>Wallet</span>
       </div>
 
-      <div style={{ marginTop: 20, borderRadius: 14, background: 'var(--green)', color: 'var(--paper)', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 30, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 24px -16px rgba(15,77,58,0.6)' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <Wordmark width={84} color="var(--paper)" hole="var(--green)" />
-          <span className="mono" style={{ fontSize: 10, letterSpacing: '0.1em', opacity: 0.72 }}>POST-QUANTUM READY</span>
+      <div style={{ marginTop: 18, borderRadius: 22, background: 'var(--green)', color: 'var(--paper)', padding: '22px 22px 20px', display: 'flex', flexDirection: 'column', gap: 26 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Wordmark width={80} color="var(--paper)" hole="var(--green)" />
+          <span style={{ fontSize: 13, opacity: 0.75 }}>QMS testnet</span>
         </div>
         <div>
-          <p style={{ margin: 0, fontSize: 12, opacity: 0.72 }}>{me.firstName ? `${me.firstName}'s wallet` : 'Your wallet'} · QMS testnet</p>
-          <p className="mono" style={{ margin: '6px 0 0', fontSize: 13, letterSpacing: '0.02em', wordBreak: 'break-all', lineHeight: 1.5 }}>{me.account}</p>
+          <p style={{ margin: 0, fontSize: 13, opacity: 0.72 }}>{me.firstName ? `${me.firstName}'s wallet` : 'Your wallet'}</p>
+          <p className="num" style={{ margin: '6px 0 0', fontSize: 22, fontWeight: 600, letterSpacing: '-0.01em' }}>{short(me.account)}</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-          <button onClick={copyAddress} style={{ height: 40, borderRadius: 10, border: 0, background: 'var(--paper)', color: 'var(--green)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Copy</button>
-          <button onClick={() => nav('send')} style={{ height: 40, borderRadius: 10, border: '1px solid rgba(246,244,239,0.4)', background: 'transparent', color: 'var(--paper)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Send</button>
-          <button onClick={() => me.account && openLink(`https://testnet.qmsscan.io/address/${me.account}`)} style={{ height: 40, borderRadius: 10, border: '1px solid rgba(246,244,239,0.4)', background: 'transparent', color: 'var(--paper)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>Explorer</button>
+          <button onClick={copyAddress} style={{ height: 42, borderRadius: 12, border: 0, background: 'var(--paper)', color: 'var(--green)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Copy</button>
+          <button onClick={() => nav('send')} style={{ height: 42, borderRadius: 12, border: '1px solid rgba(246,244,239,0.35)', background: 'transparent', color: 'var(--paper)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Send</button>
+          <button onClick={() => me.account && openLink(`https://testnet.qmsscan.io/address/${me.account}`)} style={{ height: 42, borderRadius: 12, border: '1px solid rgba(246,244,239,0.35)', background: 'transparent', color: 'var(--paper)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Explorer</button>
         </div>
       </div>
 
-      <div className="rows strong" style={{ marginTop: 24 }}>
+      <p className="section">Trading from chat</p>
+      <div className="surface">
+        <Row
+          icon="shield"
+          title="Trading permission"
+          sub={active ? `On for ${days} more days` : 'Off. Qalibre cannot trade for you'}
+          right={<span className={active ? 'pill-on' : 'pill-off'} style={{ fontSize: 14 }}>{active ? 'On' : 'Off'}</span>}
+          onClick={() => setPermission(active ? 'off' : 'on')}
+        />
+        <Row icon="limits" title="Limits" sub={qmsLimit ? `${qmsLimit.perTrade} QMS a trade, ${qmsLimit.perDay} a day` : 'Set how much Qalibre may trade'} onClick={() => nav('limits')} />
+      </div>
+
+      <p className="section">Security</p>
+      <div className="surface">
+        <Row icon="key" title="Back up your key" sub="Lets you use this wallet anywhere, even without Qalibre" onClick={startBackup} />
+        <Row icon="shield" title="Owner key" sub={`${short(me.owner)} · locked with your PIN`} />
+      </div>
+
+      <p className="section">Test funds</p>
+      <div className="surface">
         <TestFundsButton onDone={() => setTimeout(refresh, 1500)} toast={toast} />
-        <div className="row"><span>Receive</span><span style={{ color: 'var(--ink)', textAlign: 'right' }}>Send WQMS or USDC on QMS testnet to the address above</span></div>
-        <button className="row" onClick={() => openLink('https://faucet.testnet.qms.finance')} style={{ border: 0, borderBottom: '1px solid var(--rule)', background: 'transparent', width: '100%', cursor: 'pointer' }}><span>QMS faucet</span><span className="green" style={{ fontWeight: 500 }}>Open</span></button>
-        <button className="row" onClick={startBackup} style={{ border: 0, borderBottom: '1px solid var(--rule)', background: 'transparent', width: '100%', cursor: 'pointer' }}><span>Wallet key</span><span className="green" style={{ fontWeight: 500 }}>Back up</span></button>
+        <Row icon="receive" title="QMS faucet" sub="More test QMS from the QMS team" onClick={() => openLink('https://faucet.testnet.qms.finance')} />
       </div>
 
-      <h2 style={{ margin: '30px 0 0', fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em' }}>You're in charge.</h2>
-      <p className="muted" style={{ margin: '6px 0 0', fontSize: 14, lineHeight: 1.55 }}>Qalibre can only trade within these limits. It can never withdraw your money.</p>
-      <div className="rows strong" style={{ marginTop: 14 }}>
-        <div className="row"><span>Trading permission</span><span style={{ color: me.session?.active ? 'var(--green)' : 'var(--danger)', fontWeight: 600 }}>{me.session?.active ? `On · ${days} days left` : 'Off'}</span></div>
-        {(me.limits ?? []).map((l) => (
-          <div key={l.symbol} className="row" style={{ alignItems: 'flex-start' }}>
-            <span>{l.symbol}</span>
-            <span className="num" style={{ color: 'var(--ink)', textAlign: 'right' }}>
-              {l.perTrade.toLocaleString('en-US')} per trade · {l.perDay.toLocaleString('en-US')} per day
-              <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>{l.spentToday.toLocaleString('en-US', { maximumFractionDigits: 4 })} used today</span>
-            </span>
-          </div>
-        ))}
-        <div className="row"><span>Wallet owner</span><span className="mono" style={{ fontSize: 13, color: 'var(--ink)' }}>{short(me.owner)}</span></div>
-      </div>
+      <p className="muted" style={{ margin: '16px 4px 0', fontSize: 13, lineHeight: 1.5 }}>Changes here are signed with your PIN and cost you nothing. Qalibre can never withdraw your money.</p>
 
-      <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <button className="btn btn-line" onClick={() => nav('limits')}>Edit limits</button>
-        {me.session?.active ? (
-          <button className="btn btn-danger" onClick={() => setPermission('off')}>Turn off trading permission</button>
-        ) : (
-          <button className="btn btn-green" onClick={() => setPermission('on')}>Turn trading permission on</button>
-        )}
-      </div>
-      <p className="muted" style={{ margin: '12px 0 0', fontSize: 12, lineHeight: 1.55 }}>
-        Signed with your PIN on this device. Network fees for these actions are on us: you never pay to protect or move your own money.
-      </p>
+      <TabBar current="control" nav={nav} />
     </div>
   );
 }

@@ -109,7 +109,13 @@ async function serveStatic(pathname: string, res: ServerResponse) {
   return true;
 }
 
-export function startApi(db: Db, svc: Service, owner: OwnerOps) {
+/** Extra per-user data the app shows that lives in the chat side (invite link and its numbers). */
+export interface ApiExtras {
+  invite?: (tgId: number) => { link: string; invited: number; trading: number; earnedQms: string; paidQms: string; sharePct: number; days: number };
+  botUsername?: string;
+}
+
+export function startApi(db: Db, svc: Service, owner: OwnerOps, extras: ApiExtras = {}) {
   const server = createServer(async (req, res) => {
     const origin = req.headers.origin;
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -138,7 +144,10 @@ export function startApi(db: Db, svc: Service, owner: OwnerOps) {
       if (rateLimited(user.id)) return send(res, 429, { error: 'Too many requests. Please slow down.' }, origin);
       db.upsertUser(user.id, user.first_name ?? null);
 
-      if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, await svc.portfolio(user.id), origin);
+      if (req.method === 'GET' && url.pathname === '/api/me') {
+        const p = await svc.portfolio(user.id);
+        return send(res, 200, p.registered ? { ...p, invite: extras.invite?.(user.id), bot: extras.botUsername } : { ...p, bot: extras.botUsername }, origin);
+      }
       if (req.method === 'GET' && url.pathname === '/api/batch') return send(res, 200, svc.batchStatus(), origin);
 
       if (req.method === 'POST' && url.pathname === '/api/register/prepare') {

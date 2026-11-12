@@ -234,7 +234,13 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
   }
 
 
-  return { applyInvite, inviteMessage, inviteLink, onGroupMessage, onMembership, shareFill, sharePosition, shareSavings, statsMessage, safetyImage };
+  /** Invite link and its numbers, for the app's Profile. */
+  function inviteSummary(tgId: number) {
+    const r = db.referralStats(tgId);
+    return { link: inviteLink(tgId), invited: r.invited, trading: r.trading, earnedQms: r.earned.toString(), paidQms: r.paid.toString(), sharePct: REFERRAL_SHARE_BPS / 100, days: REFERRAL_DAYS };
+  }
+
+  return { inviteSummary, applyInvite, inviteMessage, inviteLink, onGroupMessage, onMembership, shareFill, sharePosition, shareSavings, statsMessage, safetyImage };
 }
 
 export type Social = ReturnType<typeof createSocial>;

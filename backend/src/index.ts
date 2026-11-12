@@ -22,8 +22,9 @@ const svc = createService(db, async (tgId, html, ctx) => {
 const me = await bot.call<{ username: string }>('getMe');
 chat = createChat({ bot, db, svc, username: me.username });
 await setupBot(bot).catch((e) => console.error('bot setup', (e as Error).message));
-startBot(bot, db, svc, chat, createSocial({ bot, db, svc, username: me.username }));
-startApi(db, svc, createOwnerOps(db, { onApproved: (tgId, tokens) => chat?.afterApproval(tgId, tokens) }));
+const social = createSocial({ bot, db, svc, username: me.username });
+startBot(bot, db, svc, chat, social);
+startApi(db, svc, createOwnerOps(db, { onApproved: (tgId, tokens) => chat?.afterApproval(tgId, tokens) }), { invite: (id) => social.inviteSummary(id), botUsername: me.username });
 
 setInterval(() => void svc.runBatch(), config.tickMs);
 console.log(`Qalibre backend running. Settlement ${svc.deployment.settlement}. Instant orders clear in the next block; best-price orders wait up to ${config.bestWindowMs / 1000}s for a match.`);
