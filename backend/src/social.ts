@@ -15,7 +15,7 @@ import type { Db, OrderRow } from './db.js';
 import { Bot, esc } from './telegram.js';
 import { REFERRAL_DAYS, REFERRAL_SHARE_BPS, type Service } from './service.js';
 import { checkToken, tokenInfo, type Safety } from './tokens.js';
-import { fillCard, positionCard, safetyCard, savingsCard } from './cards.js';
+import { fillCard, positionCard, safetyCard, safetyHeadline, savingsCard } from './cards.js';
 import { improvement } from './value.js';
 import { tokenLogo } from './logos.js';
 import { fmtSig, fmtToken } from './chat.js';
@@ -80,25 +80,8 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
   // Safety cards (groups, and the "Share" on a token)
   // ---------------------------------------------------------------------------------------------
 
-  function headline(s: Safety): { headline: string; reason: string } {
-    if (s.verdict === 'blocked') {
-      const r = s.reason ?? '';
-      if (/not sell/.test(r)) return { headline: 'Honeypot', reason: `You can buy ${s.token.symbol}. You cannot sell it.` };
-      if (/tax/.test(r)) {
-        const detail = s.findings.find((f) => f.title === 'Hidden transfer tax')?.detail ?? 'Part of every buy and sale is taken.';
-        return { headline: 'Hidden tax', reason: detail.replace(/^About/, 'It takes about') };
-      }
-      if (/no QWAP pool/.test(r)) return { headline: 'No pool', reason: 'There is nowhere to trade it against QMS.' };
-      return { headline: 'Blocked', reason: r };
-    }
-    const top = s.findings.filter((f) => f.level === 'caution' || f.level === 'danger').slice(0, 2).map((f) => f.title);
-    if (s.verdict === 'high') return { headline: 'High risk', reason: top.join('. ') + '.' };
-    if (s.verdict === 'caution') return { headline: 'Some risk', reason: top.length ? top.join('. ') + '.' : 'Read the details before buying.' };
-    return { headline: 'Low risk', reason: 'Simulated buy and sale went through, with no hidden tax.' };
-  }
-
   async function safetyImage(s: Safety): Promise<Buffer> {
-    const h = headline(s);
+    const h = safetyHeadline(s);
     return safetyCard({ symbol: s.token.symbol, address: s.token.address, logo: await tokenLogo(s.token.address), verdict: s.verdict, score: s.score, headline: h.headline, reason: h.reason, link: shortLink });
   }
 
@@ -106,7 +89,7 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
     const s = await checkToken(token);
     if (auto && s.verdict !== 'blocked' && s.verdict !== 'high') return; // speak only when it matters
     if (auto && db.alertSeen(chatId, s.token.address, ALERT_REPEAT_SEC)) return;
-    const h = headline(s);
+    const h = safetyHeadline(s);
     const caption = auto
       ? `<b>Careful: ${esc(s.token.symbol)} ${s.verdict === 'blocked' ? `is blocked (${esc(h.headline.toLowerCase())})` : `is high risk (${s.score}/100)`}.</b>\n${esc(h.reason)}\n<i>Checked by Qalibre with a simulated buy and sale. Nothing was spent.</i>`
       : `<b>${esc(s.token.symbol)}</b>  ${s.verdict === 'blocked' ? 'Blocked' : `${s.score}/100`}\n${esc(h.reason)}`;

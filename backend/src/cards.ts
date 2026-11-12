@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { Resvg } from '@resvg/resvg-js';
 import { ROOT } from './config.js';
 import { emblem } from './logos.js';
+import type { Safety } from './tokens.js';
 
 const W = 1200;
 const H = 675;
@@ -52,6 +53,8 @@ interface Card {
   heroTone?: 'paper' | 'brass' | 'alarm';
   /** One sentence under the statement. */
   line: string;
+  /** Colour of that sentence: paper by default; brass or alarm when it carries a safety verdict. */
+  lineTone?: 'paper' | 'brass' | 'alarm';
   /** Optional quiet detail under the sentence (amounts, an address). */
   detail?: string;
   /** The token the card is about: shown as a header with its logo (or designed badge), symbol and context. */
@@ -78,6 +81,24 @@ function tokenBadge(t: TokenMark, cx: number, cy: number, r: number): string {
   const id = `em${t.address.slice(2, 10)}`;
   return `<clipPath id="${id}"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath>
     <g clip-path="url(#${id})">${emblem(t.address, cx, cy, r)}</g>${ring}`;
+}
+
+/**
+ * Escape text and typeset subscript digits (from fmtPrice) as real small numerals: 45% size, lowered a little,
+ * then back to the baseline. The font's own subscript glyphs are too heavy at display sizes.
+ */
+function typeset(text: string, size: number): string {
+  const SUB = '₀₁₂₃₄₅₆₇₈₉';
+  const parts = text.split(/([₀-₉]+)/).filter(Boolean);
+  if (parts.length === 1 && !SUB.includes(parts[0]![0]!)) return x(text);
+  const drop = Math.round(size * 0.1);
+  return parts
+    .map((part) =>
+      SUB.includes(part[0]!)
+        ? `<tspan font-size="${Math.round(size * (size < 40 ? 0.62 : 0.45))}" dy="${drop}" dx="${Math.round(size * 0.02)}">${[...part].map((ch) => SUB.indexOf(ch)).join('')}</tspan><tspan dy="${-drop}" dx="${Math.round(size * 0.03)}"></tspan>`
+        : `<tspan>${x(part)}</tspan>`,
+    )
+    .join('');
 }
 
 function svg(c: Card, link: string): string {
@@ -109,9 +130,9 @@ function svg(c: Card, link: string): string {
   <text x="${L + 84}" y="${top + 28}" font-family="Inter" font-weight="600" font-size="28" letter-spacing="-0.4" fill="${C.paper}">${x(c.token.symbol)}</text>
   <text x="${L + 84}" y="${top + 58}" font-family="Inter" font-weight="500" font-size="20" fill="${C.paper}" fill-opacity="0.6">${x(c.over)}</text>`
     : `<text x="${L}" y="${overY}" font-family="Inter" font-weight="500" font-size="26" fill="${C.paper}" fill-opacity="0.62">${x(c.over)}</text>`}
-  <text x="${L - Math.round(heroSize * 0.05)}" y="${heroY}" font-family="Inter" font-weight="600" font-size="${heroSize}" letter-spacing="${(-heroSize * 0.045).toFixed(1)}" fill="${c.heroTone === 'alarm' ? C.alarm : c.heroTone === 'brass' ? C.brass : C.paper}">${x(c.hero)}${unit}</text>
-  <text x="${L}" y="${lineY}" font-family="Inter" font-weight="500" font-size="32" letter-spacing="-0.3" fill="${C.paper}" fill-opacity="0.92">${x(c.line)}</text>
-  ${c.detail ? `<text x="${L}" y="${lineY + 46}" font-family="Inter" font-weight="400" font-size="22" fill="${C.paper}" fill-opacity="0.5">${x(c.detail)}</text>` : ''}
+  <text x="${L - Math.round(heroSize * 0.05)}" y="${heroY}" font-family="Inter" font-weight="600" font-size="${heroSize}" letter-spacing="${(-heroSize * 0.045).toFixed(1)}" fill="${c.heroTone === 'alarm' ? C.alarm : c.heroTone === 'brass' ? C.brass : C.paper}">${typeset(c.hero, heroSize)}${unit}</text>
+  <text x="${L}" y="${lineY}" font-family="Inter" font-weight="500" font-size="32" letter-spacing="-0.3" fill="${c.lineTone === 'alarm' ? C.alarm : c.lineTone === 'brass' ? C.brass : C.paper}" fill-opacity="${c.lineTone && c.lineTone !== 'paper' ? 1 : 0.92}">${x(c.line)}</text>
+  ${c.detail ? `<text x="${L}" y="${lineY + 46}" font-family="Inter" font-weight="400" font-size="22" fill="${C.paper}" fill-opacity="0.5">${typeset(c.detail, 22)}</text>` : ''}
   ${wordmark(L, H - 96, 30, C.paper, bg)}
   <text x="${W - L}" y="${H - 70}" text-anchor="end" font-family="Inter" font-weight="500" font-size="20" fill="${C.paper}" fill-opacity="0.6">${x(link)}</text>
 </svg>`;
@@ -181,4 +202,56 @@ export function safetyCard(p: SafetyFacts & { logo: string | null; link: string 
     },
     p.link,
   );
+}
+
+/**
+ * A price the way trading apps write tiny numbers: 0.0₆1635 means six zeros after the point, then 1635.
+ * Four significant digits; ordinary numbers stay ordinary.
+ */
+export function fmtPrice(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0';
+  if (n >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  if (n >= 1) return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
+  const zeros = Math.floor(-Math.log10(n)); // 0.000123 -> 3 leading zeros after the point
+  if (zeros < 4) return n.toFixed(zeros + 4).replace(/0+$/, '');
+  const digits = Math.round(n * 10 ** (zeros + 4)).toString().replace(/0+$/, '');
+  const sub = String(zeros).split('').map((d) => '₀₁₂₃₄₅₆₇₈₉'[Number(d)]).join('');
+  return `0.0${sub}${digits}`;
+}
+
+/** The chat token card: the token, its price and pool, and its safety verdict in colour. */
+export function tokenCard(p: { token: TokenMark; name: string; priceQms: number; priceUsd: number; liquidityUsd: number; verdict: 'high' | 'caution' | 'ok'; score: number; link: string }): Buffer {
+  const label = p.verdict === 'high' ? 'High risk' : p.verdict === 'caution' ? 'Some risk' : 'Low risk';
+  const short = `${p.token.address.slice(0, 6)}…${p.token.address.slice(-4)}`;
+  return render(
+    {
+      field: p.verdict === 'high' ? 'ink' : 'green',
+      token: p.token,
+      over: p.name,
+      hero: fmtPrice(p.priceQms),
+      unit: 'QMS',
+      line: `Safety ${p.score}/100. ${label}.`,
+      lineTone: p.verdict === 'high' ? 'brass' : 'paper',
+      detail: `$${fmtPrice(p.priceUsd)} each  ·  pool $${p.liquidityUsd >= 100 ? Math.round(p.liquidityUsd).toLocaleString('en-US') : p.liquidityUsd.toFixed(2)}  ·  ${short}`,
+    },
+    p.link,
+  );
+}
+
+/** The verdict of a safety check in card words: a short headline and one sentence. */
+export function safetyHeadline(s: Safety): { headline: string; reason: string } {
+  if (s.verdict === 'blocked') {
+    const r = s.reason ?? '';
+    if (/not sell/.test(r)) return { headline: 'Honeypot', reason: `You can buy ${s.token.symbol}. You cannot sell it.` };
+    if (/tax/.test(r)) {
+      const detail = s.findings.find((f) => f.title === 'Hidden transfer tax')?.detail ?? 'Part of every buy and sale is taken.';
+      return { headline: 'Hidden tax', reason: detail.replace(/^About/, 'It takes about') };
+    }
+    if (/no QWAP pool/.test(r)) return { headline: 'No pool', reason: 'There is nowhere to trade it against QMS.' };
+    return { headline: 'Blocked', reason: r };
+  }
+  const top = s.findings.filter((f) => f.level === 'caution' || f.level === 'danger').slice(0, 2).map((f) => f.title);
+  if (s.verdict === 'high') return { headline: 'High risk', reason: top.join('. ') + '.' };
+  if (s.verdict === 'caution') return { headline: 'Some risk', reason: top.length ? top.join('. ') + '.' : 'Read the details before buying.' };
+  return { headline: 'Low risk', reason: 'Simulated buy and sale went through, with no hidden tax.' };
 }

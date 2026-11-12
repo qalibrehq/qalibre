@@ -86,6 +86,19 @@ export class Bot {
     return json.result;
   }
 
+  /** Replace the image, caption and buttons of a photo message we sent (editMessageMedia, multipart). */
+  async editPhoto(chatId: number, messageId: number, png: Buffer, caption: string, replyMarkup?: unknown): Promise<void> {
+    const form = new FormData();
+    form.set('chat_id', String(chatId));
+    form.set('message_id', String(messageId));
+    form.set('media', JSON.stringify({ type: 'photo', media: 'attach://card', caption, parse_mode: 'HTML' }));
+    if (replyMarkup) form.set('reply_markup', JSON.stringify(replyMarkup));
+    form.set('card', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'qalibre.png');
+    const res = await fetch(`https://api.telegram.org/bot${this.token}/editMessageMedia`, { method: 'POST', body: form, signal: AbortSignal.timeout(30_000) });
+    const json = (await res.json()) as { ok: boolean; description?: string };
+    if (!json.ok && !(json.description ?? '').includes('message is not modified')) throw new TelegramError('editMessageMedia', json.description ?? String(res.status));
+  }
+
   editMessage(chatId: number, messageId: number, text: string, extra: Record<string, unknown> = {}) {
     return this.call('editMessageText', { chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML', disable_web_page_preview: true, ...extra }).catch((e) => {
       // Editing to identical content is not an error for us.

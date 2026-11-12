@@ -49,3 +49,18 @@ describe('buy sizes on a card', () => {
     expect(buySizes(q('0.001'), q('10'), q('1000'))).toEqual([]);
   });
 });
+
+describe('price display', async () => {
+  const { fmtPrice } = await import('../src/cards.js');
+  it('writes tiny prices the way trading apps do', () => {
+    expect(fmtPrice(1.635e-7)).toBe('0.0₆1635');
+    expect(fmtPrice(0.000000016)).toBe('0.0₇16');
+    expect(fmtPrice(0.000123)).toBe('0.000123');
+    expect(fmtPrice(0.0042)).toBe('0.0042');
+  });
+  it('keeps ordinary prices ordinary', () => {
+    expect(fmtPrice(3.14159)).toBe('3.1416');
+    expect(fmtPrice(12345.6)).toBe('12,346');
+    expect(fmtPrice(0)).toBe('0');
+  });
+});

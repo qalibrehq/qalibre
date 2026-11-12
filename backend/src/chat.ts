@@ -15,6 +15,8 @@ import { config, TOKENS } from './config.js';
 import type { Db } from './db.js';
 import { Bot, esc } from './telegram.js';
 import { HighImpact, NeedsApproval, UserError, trimUnits, type Service } from './service.js';
+import { safetyCard, safetyHeadline, tokenCard } from './cards.js';
+import { tokenLogo } from './logos.js';
 import { checkToken, poolOf, resolveToken, type Safety, type TokenInfo } from './tokens.js';
 
 /** Buy sizes in QMS. A card shows the three largest that fit the wallet, the limit and the pool. */
@@ -69,26 +71,46 @@ function ago(ms: number): string {
 // The card
 // ---------------------------------------------------------------------------------------------
 
-function cardText(s: Safety, extra: string[] = []): string {
+/**
+ * The card's words. With an image (`caption`), price and pool are in the picture, so they are left out here.
+ * Telegram captions are capped at 1024 characters: the least important lines go first if a caption runs long.
+ */
+function cardText(s: Safety, extra: string[] = [], caption = false): string {
   const t = s.token;
-  const lines = [
-    `<b>${esc(t.symbol)}</b>  ${esc(t.name)}`,
-    `<code>${t.address}</code>`,
-    '',
-  ];
-  if (s.priceQms > 0) {
+  // Under an image the symbol, name, price and verdict are already in the picture: the caption starts with
+  // the copyable address and carries only what the picture does not.
+  const lines = caption ? [`<code>${t.address}</code>`, ''] : [`<b>${esc(t.symbol)}</b>  ${esc(t.name)}`, `<code>${t.address}</code>`, ''];
+  if (!caption && s.priceQms > 0) {
     lines.push(`Price   ${fmtSig(s.priceQms)} QMS  ($${fmtSig(s.priceUsd)})`);
     if (s.liquidityUsd > 0) lines.push(`Pool    $${fmtSig(s.liquidityUsd, 3)}`);
     lines.push('');
   }
-  lines.push(s.verdict === 'blocked' ? `<b>Blocked.</b> ${esc(s.reason ?? '')}` : `<b>Safety ${s.score}/100</b>  ${verdictLabel[s.verdict]}`);
+  if (!caption) lines.push(s.verdict === 'blocked' ? `<b>Blocked.</b> ${esc(s.reason ?? '')}` : `<b>Safety ${s.score}/100</b>  ${verdictLabel[s.verdict]}`);
+  else lines.push('<b>What the check found</b>');
   const shown = s.findings.filter((f) => f.level !== 'pass').slice(0, 5);
   for (const f of shown) lines.push(`${mark[f.level]}  ${esc(f.title)}`);
   const passes = s.findings.filter((f) => f.level === 'pass').map((f) => f.title);
   if (passes.length) lines.push(`${mark.pass}  ${esc(passes.slice(0, 3).join(' · '))}`);
   if (extra.length) lines.push('', ...extra);
   lines.push('', `<i>Checked ${ago(s.checkedAt)}. A safety check reduces risk; it cannot guarantee a token is safe.</i>`);
-  return lines.join('\n');
+  let text = lines.join('\n');
+  if (caption && text.length > 1000) {
+    // Drop the passes line, then trim findings to three, then shorten the closing note.
+    text = lines.filter((l) => !l.startsWith(mark.pass!)).join('\n');
+    if (text.length > 1000) text = text.replace(/<i>Checked .*<\/i>/, `<i>Checked ${ago(s.checkedAt)}.</i>`);
+    if (text.length > 1000) text = text.slice(0, 990) + '…';
+  }
+  return text;
+}
+
+/** The card image: blocked tokens lead with the warning; everything else with the token and its price. */
+async function cardImage(s: Safety, link: string): Promise<Buffer> {
+  const logo = await tokenLogo(s.token.address);
+  if (s.verdict === 'blocked') {
+    const h = safetyHeadline(s);
+    return safetyCard({ symbol: s.token.symbol, address: s.token.address, logo, verdict: s.verdict, score: s.score, headline: h.headline, reason: h.reason, link });
+  }
+  return tokenCard({ token: { symbol: s.token.symbol, address: s.token.address, logo }, name: s.token.name, priceQms: s.priceQms, priceUsd: s.priceUsd, liquidityUsd: s.liquidityUsd, verdict: s.verdict, score: s.score, link });
 }
 
 /** Parse an amount typed by a person: "0.5", "1,000", ".25". Returns null if it is not a clean number. */
@@ -139,7 +161,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
   }
 
   /** Build the private-chat card for a user: text and the buttons they can use right now. */
-  async function renderCard(tgId: number, token: Address, fresh = false): Promise<{ text: string; keyboard: Keyboard }> {
+  async function renderCard(tgId: number, token: Address, fresh = false): Promise<{ text: string; keyboard: Keyboard; image: Buffer }> {
     // Safety and wallet state are independent reads: fetch them together.
     const [s, ctx] = await Promise.all([checkToken(token, { fresh }), svc.tradeContext(tgId, getAddress(token) as Address).catch(() => null)]);
     const card = newCard(tgId, s.token.address);
@@ -151,7 +173,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       const url = appUrl({});
       if (url) kb.push([{ text: 'Create your wallet to trade', web_app: { url } }]);
       kb.push([{ text: 'Refresh', callback_data: cb('r') }]);
-      return { text: cardText(s), keyboard: kb };
+      return { text: cardText(s, [], true), keyboard: kb, image: await cardImage(s, `t.me/${username}`) };
     }
     if (ctx.balance > 0n) {
       const pool = await poolOf(s.token).catch(() => null);
@@ -181,7 +203,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       kb.push(SELL_PCTS.map((p) => ({ text: p === 100 ? 'Sell all' : `Sell ${p}%`, callback_data: cb(`s${p}`) })));
     }
     kb.push([{ text: 'Refresh', callback_data: cb('r') }, { text: 'Share', url: `https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${username}?start=t_${s.token.address.slice(2)}`)}` }]);
-    return { text: cardText(s, extra), keyboard: kb };
+    return { text: cardText(s, extra, true), keyboard: kb, image: await cardImage(s, `t.me/${username}`) };
   }
 
   /** A card for groups and inline results: read-only, links to the private chat to trade. */
@@ -194,12 +216,16 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
   }
 
   async function sendCard(tgId: number, token: Address, replyTo?: number) {
-    const placeholder = (await bot.sendMessage(tgId, 'Checking this token. A simulated buy and sale is running…', replyTo ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } } : {})) as { message_id: number };
+    // Telegram shows "sending photo…" while the check runs (about a second); no placeholder message to clean up.
+    void bot.call('sendChatAction', { chat_id: tgId, action: 'upload_photo' }).catch(() => null);
     try {
       const c = await renderCard(tgId, token);
-      await bot.editMessage(tgId, placeholder.message_id, c.text, { reply_markup: { inline_keyboard: c.keyboard } });
+      await bot.sendPhoto(tgId, c.image, c.text, {
+        reply_markup: { inline_keyboard: c.keyboard },
+        ...(replyTo ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } } : {}),
+      });
     } catch (e) {
-      await bot.editMessage(tgId, placeholder.message_id, esc(e instanceof UserError ? e.message : 'That token could not be checked right now. Try again in a moment.'));
+      await bot.sendMessage(tgId, esc(e instanceof UserError ? e.message : 'That token could not be checked right now. Try again in a moment.'));
       if (!(e instanceof UserError)) console.error('card', (e as Error).message);
     }
   }
@@ -506,7 +532,11 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       if (!q.message) return;
       try {
         const c = await renderCard(tgId, token, true);
-        await bot.editMessage(tgId, q.message.message_id, c.text, { reply_markup: { inline_keyboard: c.keyboard } });
+        // Refresh the card in place. A text message (an order status, or a card from before images) cannot
+        // become a photo, so then the fresh card is sent as a new message.
+        await bot.editPhoto(tgId, q.message.message_id, c.image, c.text, { inline_keyboard: c.keyboard }).catch(() =>
+          bot.sendPhoto(tgId, c.image, c.text, { reply_markup: { inline_keyboard: c.keyboard } }),
+        );
       } catch (e) {
         await bot.sendMessage(tgId, esc(e instanceof UserError ? e.message : 'Could not refresh this token right now.'));
       }
