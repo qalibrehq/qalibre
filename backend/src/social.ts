@@ -15,7 +15,7 @@ import type { Db, OrderRow } from './db.js';
 import { Bot, esc } from './telegram.js';
 import { REFERRAL_DAYS, REFERRAL_SHARE_BPS, trimUnits, type Service } from './service.js';
 import { checkToken, tokenInfo, type Safety } from './tokens.js';
-import { fillCard, positionCard, safetyCard, savingsCard, type Stat } from './cards.js';
+import { fillCard, positionCard, safetyCard, savingsCard } from './cards.js';
 import { improvement } from './value.js';
 import { fmtSig, fmtToken } from './chat.js';
 
@@ -82,7 +82,7 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
   function headline(s: Safety): { headline: string; reason: string } {
     if (s.verdict === 'blocked') {
       const r = s.reason ?? '';
-      if (/not sell/.test(r)) return { headline: 'Honeypot', reason: 'You could buy it, but you could not sell it.' };
+      if (/not sell/.test(r)) return { headline: 'Honeypot', reason: `You can buy ${s.token.symbol}. You cannot sell it.` };
       if (/tax/.test(r)) {
         const detail = s.findings.find((f) => f.title === 'Hidden transfer tax')?.detail ?? 'Part of every buy and sale is taken.';
         return { headline: 'Hidden tax', reason: detail.replace(/^About/, 'It takes about') };
@@ -97,23 +97,8 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
   }
 
   function safetyImage(s: Safety): Buffer {
-    const SALE: Record<string, { value: string; tone: Stat['tone'] }> = {
-      'You can sell it': { value: 'Went through', tone: 'green' },
-      'You cannot sell it': { value: 'Blocked', tone: 'danger' },
-      'Hidden transfer tax': { value: 'Taxed', tone: 'danger' },
-      'Buying fails': { value: 'Buy failed', tone: 'danger' },
-      'Sale could not be simulated': { value: 'Unknown', tone: 'ink' },
-    };
-    const sold = s.findings.map((f) => SALE[f.title]).find(Boolean);
-    const powers = s.findings.filter((f) => f.level === 'caution' && /creator|paused|blacklist|changed|Fees|capped|make more/i.test(f.title)).length;
-    const checks: Stat[] = [
-      // "Not run" only when there was no pool to simulate against.
-      { label: 'Simulated sale', value: sold?.value ?? 'Not run', tone: sold?.tone ?? 'ink' },
-      { label: 'Pool', value: s.liquidityUsd > 0 ? `$${fmtSig(s.liquidityUsd, 3)}` : 'None', tone: s.liquidityUsd > 0 && s.liquidityUsd < 1000 ? 'caution' : 'ink' },
-      { label: 'Creator powers', value: powers === 0 ? 'None found' : `${powers} found`, tone: powers ? 'caution' : 'green' },
-    ];
     const h = headline(s);
-    return safetyCard({ symbol: s.token.symbol, address: s.token.address, verdict: s.verdict, score: s.score, headline: h.headline, reason: h.reason, checks, link: shortLink });
+    return safetyCard({ symbol: s.token.symbol, address: s.token.address, verdict: s.verdict, score: s.score, headline: h.headline, reason: h.reason, link: shortLink });
   }
 
   async function postSafety(chatId: number, token: Address, replyTo: number | undefined, auto: boolean) {
