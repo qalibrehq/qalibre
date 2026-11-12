@@ -126,7 +126,7 @@ export function openDb(path: string) {
     );
   `);
 
-  for (const ddl of ['ALTER TABLE users ADD COLUMN pending_session_address TEXT', 'ALTER TABLE users ADD COLUMN pending_session_enc TEXT', 'ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN max_network_fee TEXT NOT NULL DEFAULT '0'", 'ALTER TABLE orders ADD COLUMN network_fee TEXT', 'ALTER TABLE users ADD COLUMN settlement TEXT', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER', 'ALTER TABLE orders ADD COLUMN status_msg_id INTEGER', 'ALTER TABLE users ADD COLUMN ref_code TEXT', 'ALTER TABLE users ADD COLUMN referrer_tg INTEGER', 'ALTER TABLE users ADD COLUMN referred_at INTEGER']) {
+  for (const ddl of ['ALTER TABLE users ADD COLUMN pending_session_address TEXT', 'ALTER TABLE users ADD COLUMN pending_session_enc TEXT', 'ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN max_network_fee TEXT NOT NULL DEFAULT '0'", 'ALTER TABLE orders ADD COLUMN network_fee TEXT', 'ALTER TABLE users ADD COLUMN settlement TEXT', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER', 'ALTER TABLE orders ADD COLUMN status_msg_id INTEGER', 'ALTER TABLE users ADD COLUMN ref_code TEXT', 'ALTER TABLE users ADD COLUMN referrer_tg INTEGER', 'ALTER TABLE users ADD COLUMN referred_at INTEGER', 'ALTER TABLE cards ADD COLUMN msg_id INTEGER']) {
     try {
       db.exec(ddl);
     } catch {
@@ -219,6 +219,14 @@ export function openDb(path: string) {
     putCard(id: string, tgId: number, token: string) {
       db.prepare('INSERT OR REPLACE INTO cards (id, tg_id, token, created_at) VALUES (?, ?, ?, ?)').run(id, tgId, token, now());
       db.prepare('DELETE FROM cards WHERE created_at < ?').run(now() - 30 * 86400);
+    },
+    setCardMessage(id: string, msgId: number) {
+      db.prepare('UPDATE cards SET msg_id = ? WHERE id = ?').run(msgId, id);
+    },
+    /** The most recent chat message showing a card for this user and token. */
+    lastCardMessage(tgId: number, token: string): number | undefined {
+      const r = db.prepare('SELECT msg_id FROM cards WHERE tg_id = ? AND lower(token) = lower(?) AND msg_id IS NOT NULL ORDER BY created_at DESC, rowid DESC LIMIT 1').get(tgId, token) as { msg_id: number } | undefined;
+      return r?.msg_id;
     },
     getCard(id: string): { id: string; tg_id: number; token: string } | undefined {
       return db.prepare('SELECT id, tg_id, token FROM cards WHERE id = ?').get(id) as { id: string; tg_id: number; token: string } | undefined;

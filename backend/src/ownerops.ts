@@ -34,7 +34,7 @@ const paymasterAbi = parseAbi([`function getHash(${PACKED} userOp, uint48 validU
 const erc20TransferAbi = parseAbi(['function transfer(address to, uint256 amount) returns (bool)']);
 
 /** What Qalibre will sponsor. Anything else is refused before it costs anyone anything. */
-function checkPolicy(account: Address, callData: Hex): { action: string; detail?: Record<string, string> } {
+function checkPolicy(account: Address, callData: Hex): { action: string; detail?: Record<string, string>; approved?: Address[] } {
   let decoded;
   try {
     decoded = decodeFunctionData({ abi: QalibreAccountAbi, data: callData });
@@ -45,12 +45,14 @@ function checkPolicy(account: Address, callData: Hex): { action: string; detail?
   if (['revokeSession', 'setTokenLimit', 'setAnyBuyToken', 'setBuyTokenAllowed', 'setSession'].includes(fn)) return { action: fn };
   if (fn === 'executeBatch') {
     const [targets, values, datas] = decoded.args as readonly [readonly Address[], readonly bigint[], readonly Hex[]];
+    const approved: Address[] = [];
     for (let i = 0; i < targets.length; i++) {
       if (targets[i]!.toLowerCase() !== account.toLowerCase() || values[i] !== 0n) throw new UserError('That action is not supported.');
-      const inner = decodeFunctionData({ abi: QalibreAccountAbi, data: datas[i]! }).functionName;
-      if (!['setTokenLimit', 'setAnyBuyToken', 'setBuyTokenAllowed'].includes(inner)) throw new UserError('That action is not supported.');
+      const inner = decodeFunctionData({ abi: QalibreAccountAbi, data: datas[i]! });
+      if (!['setTokenLimit', 'setAnyBuyToken', 'setBuyTokenAllowed'].includes(inner.functionName)) throw new UserError('That action is not supported.');
+      if (inner.functionName === 'setBuyTokenAllowed' && (inner.args as readonly [Address, boolean])[1]) approved.push((inner.args as readonly [Address, boolean])[0]);
     }
-    return { action: 'editLimits' };
+    return approved.length ? { action: 'approveToken', approved } : { action: 'editLimits' };
   }
   if (fn === 'execute') {
     const [target, value, data] = decoded.args as readonly [Address, bigint, Hex];
@@ -92,7 +94,12 @@ function fromWire(w: Record<string, string>): Op {
   };
 }
 
-export function createOwnerOps(db: Db) {
+/** Called after an owner action has landed on-chain, so the chat can reflect it at once. */
+export interface OwnerOpHooks {
+  onApproved?: (tgId: number, tokens: Address[]) => void | Promise<void>;
+}
+
+export function createOwnerOps(db: Db, hooks: OwnerOpHooks = {}) {
   function accountOf(tgId: number): Address {
     const u = db.getUser(tgId);
     if (!u?.account || u.settlement?.toLowerCase() !== dep.settlement.toLowerCase()) throw new UserError('Open your wallet first.');
@@ -172,6 +179,8 @@ export function createOwnerOps(db: Db) {
       const key = (d.args?.[0] as { key: Address }).key;
       db.activatePendingSession(tgId, key);
     }
+    // A token approved from a chat card: update that card in the chat now, no Refresh needed.
+    if (policy.approved?.length && hooks.onApproved) void Promise.resolve(hooks.onApproved(tgId, policy.approved)).catch((e) => console.error('after approval', (e as Error).message));
     return { tx: hash, action: policy.action };
   }
 

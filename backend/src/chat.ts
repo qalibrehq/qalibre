@@ -161,7 +161,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
   }
 
   /** Build the private-chat card for a user: text and the buttons they can use right now. */
-  async function renderCard(tgId: number, token: Address, fresh = false): Promise<{ text: string; keyboard: Keyboard; image: Buffer }> {
+  async function renderCard(tgId: number, token: Address, fresh = false): Promise<{ text: string; keyboard: Keyboard; image: Buffer; card: string }> {
     // Safety and wallet state are independent reads: fetch them together.
     const [s, ctx] = await Promise.all([checkToken(token, { fresh }), svc.tradeContext(tgId, getAddress(token) as Address).catch(() => null)]);
     const card = newCard(tgId, s.token.address);
@@ -173,7 +173,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       const url = appUrl({});
       if (url) kb.push([{ text: 'Create your wallet to trade', web_app: { url } }]);
       kb.push([{ text: 'Refresh', callback_data: cb('r') }]);
-      return { text: cardText(s, [], true), keyboard: kb, image: await cardImage(s, `t.me/${username}`) };
+      return { text: cardText(s, [], true), keyboard: kb, image: await cardImage(s, `t.me/${username}`), card };
     }
     if (ctx.balance > 0n) {
       const pool = await poolOf(s.token).catch(() => null);
@@ -203,7 +203,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       kb.push(SELL_PCTS.map((p) => ({ text: p === 100 ? 'Sell all' : `Sell ${p}%`, callback_data: cb(`s${p}`) })));
     }
     kb.push([{ text: 'Refresh', callback_data: cb('r') }, { text: 'Share', url: `https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${username}?start=t_${s.token.address.slice(2)}`)}` }]);
-    return { text: cardText(s, extra, true), keyboard: kb, image: await cardImage(s, `t.me/${username}`) };
+    return { text: cardText(s, extra, true), keyboard: kb, image: await cardImage(s, `t.me/${username}`), card };
   }
 
   /** A card for groups and inline results: read-only, links to the private chat to trade. */
@@ -220,10 +220,11 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
     void bot.call('sendChatAction', { chat_id: tgId, action: 'upload_photo' }).catch(() => null);
     try {
       const c = await renderCard(tgId, token);
-      await bot.sendPhoto(tgId, c.image, c.text, {
+      const m = await bot.sendPhoto(tgId, c.image, c.text, {
         reply_markup: { inline_keyboard: c.keyboard },
         ...(replyTo ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } } : {}),
       });
+      db.setCardMessage(c.card, m.message_id);
     } catch (e) {
       await bot.sendMessage(tgId, esc(e instanceof UserError ? e.message : 'That token could not be checked right now. Try again in a moment.'));
       if (!(e instanceof UserError)) console.error('card', (e as Error).message);
@@ -534,9 +535,11 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
         const c = await renderCard(tgId, token, true);
         // Refresh the card in place. A text message (an order status, or a card from before images) cannot
         // become a photo, so then the fresh card is sent as a new message.
-        await bot.editPhoto(tgId, q.message.message_id, c.image, c.text, { inline_keyboard: c.keyboard }).catch(() =>
-          bot.sendPhoto(tgId, c.image, c.text, { reply_markup: { inline_keyboard: c.keyboard } }),
-        );
+        const msgId = await bot
+          .editPhoto(tgId, q.message.message_id, c.image, c.text, { inline_keyboard: c.keyboard })
+          .then(() => q.message!.message_id)
+          .catch(async () => (await bot.sendPhoto(tgId, c.image, c.text, { reply_markup: { inline_keyboard: c.keyboard } })).message_id);
+        db.setCardMessage(c.card, msgId);
       } catch (e) {
         await bot.sendMessage(tgId, esc(e instanceof UserError ? e.message : 'Could not refresh this token right now.'));
       }
@@ -565,7 +568,24 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
     await sellPct(tgId, info.token, pct);
   }
 
-  return { onPrivateText, onStartPayload, onInlineQuery, onCallback, onOrderUpdate, renderCard, publicCard };
+  /**
+   * A token was approved in the app: redraw its latest card in the chat so Buy buttons appear by themselves,
+   * and say so in one line. If the card can no longer be edited, send a fresh one.
+   */
+  async function afterApproval(tgId: number, tokens: Address[]) {
+    for (const token of tokens) {
+      const c = await renderCard(tgId, token, false);
+      const last = db.lastCardMessage(tgId, token);
+      let msgId: number | undefined;
+      if (last) msgId = await bot.editPhoto(tgId, last, c.image, c.text, { inline_keyboard: c.keyboard }).then(() => last).catch(() => undefined);
+      if (!msgId) msgId = (await bot.sendPhoto(tgId, c.image, c.text, { reply_markup: { inline_keyboard: c.keyboard } })).message_id;
+      db.setCardMessage(c.card, msgId);
+      const info = await resolveToken(token);
+      await bot.sendMessage(tgId, `<b>${esc(info.token?.symbol ?? 'Token')} approved.</b> Tap Buy on the card to trade it.`, { reply_parameters: { message_id: msgId, allow_sending_without_reply: true } });
+    }
+  }
+
+  return { afterApproval, onPrivateText, onStartPayload, onInlineQuery, onCallback, onOrderUpdate, renderCard, publicCard };
 }
 
 export type Chat = ReturnType<typeof createChat>;

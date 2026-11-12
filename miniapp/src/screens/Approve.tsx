@@ -43,6 +43,8 @@ export function Approve({ me, token, nav }: { me: Me; token: string; nav: Nav })
           setTx(hash);
           haptic.success();
           setStep('done');
+          // The chat card updates itself on the server; return the user to it after a beat.
+          window.setTimeout(() => tg?.close?.(), 1600);
         }}
       />
     );
@@ -54,7 +56,7 @@ export function Approve({ me, token, nav }: { me: Me; token: string; nav: Nav })
         <div style={{ marginTop: 'auto', marginBottom: 'auto', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
           <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="21" fill="var(--green)" /><path d="M14 22.5 L19.5 28 L30 17" fill="none" stroke="var(--paper)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
           <p style={{ margin: 0, fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em' }}>{s.token.symbol} approved</p>
-          <p className="muted" style={{ margin: 0, fontSize: 14, lineHeight: 1.55, maxWidth: 290 }}>Go back to the chat and tap Refresh on the card. You can now buy and sell {s.token.symbol} with one tap.</p>
+          <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.5, maxWidth: 280 }}>Taking you back to the chat. Your {s.token.symbol} card now has Buy buttons.</p>
         </div>
         {tx && <button className="btn btn-line" style={{ marginBottom: 10 }} onClick={() => openLink(`https://testnet.qmsscan.io/tx/${tx}`)}>View on QMS Explorer</button>}
         <button className="btn btn-ink" onClick={() => (tg?.close ? tg.close() : nav('home'))}>Back to chat</button>
