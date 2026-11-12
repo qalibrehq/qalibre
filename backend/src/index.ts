@@ -4,6 +4,7 @@ import { Bot } from './telegram.js';
 import { createService } from './service.js';
 import { startApi } from './api.js';
 import { setupBot, startBot } from './bot.js';
+import { createOwnerOps } from './ownerops.js';
 
 const db = openDb(config.dbPath);
 const bot = new Bot(config.botToken);
@@ -13,7 +14,7 @@ const svc = createService(db, async (tgId, html) => {
 
 await setupBot(bot).catch((e) => console.error('bot setup', (e as Error).message));
 startBot(bot, db, svc);
-startApi(db, svc);
+startApi(db, svc, createOwnerOps(db));
 
 setInterval(() => void svc.runBatch(), config.tickMs);
 console.log(`Qalibre backend running. Settlement ${svc.deployment.settlement}. Instant orders clear in the next block; best-price orders wait up to ${config.bestWindowMs / 1000}s for a match.`);

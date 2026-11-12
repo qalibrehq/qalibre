@@ -143,19 +143,31 @@ export async function readReserves(client: PublicClient, router: Address, tokenA
 
 export const CONFIRMATIONS = BigInt(process.env.CONFIRMATIONS ?? '3');
 
-export async function waitForConfirmations(client: PublicClient, hash: Hex, confirmations = CONFIRMATIONS) {
-  const receipt = await client.waitForTransactionReceipt({ hash, timeout: 180_000, pollingInterval: 700 });
-  if (receipt.status !== 'success') throw new Error(`transaction reverted: ${hash}`);
-  const target = receipt.blockNumber + confirmations - 1n;
-  for (;;) {
-    const head = await client.getBlockNumber();
-    if (head >= target) break;
-    await new Promise((r) => setTimeout(r, 1_500));
+/** Thrown when a transaction left the chain in a reorganization and did not come back. */
+export class DroppedByReorg extends Error {}
+
+/**
+ * Wait until `hash` is `confirmations` blocks deep on the canonical chain.
+ * QMS blocks are probabilistic and short reorganizations happen (observed on testnet). A transaction that is
+ * reorganized out is usually re-included from the mempool in a later block, so we follow it: if it reappears,
+ * counting restarts from its new block. If it does not reappear within `reincludeMs`, DroppedByReorg is thrown.
+ */
+export async function waitForConfirmations(client: PublicClient, hash: Hex, confirmations = CONFIRMATIONS, reincludeMs = 120_000) {
+  let receipt = await client.waitForTransactionReceipt({ hash, timeout: 180_000, pollingInterval: 700 });
+  for (let reorgs = 0; reorgs < 5; reorgs++) {
+    if (receipt.status !== 'success') throw new Error(`transaction reverted: ${hash}`);
+    const target = receipt.blockNumber + confirmations - 1n;
+    while ((await client.getBlockNumber()) < target) await new Promise((r) => setTimeout(r, 1_500));
+    const again = await client.getTransactionReceipt({ hash }).catch(() => null);
+    if (again && again.blockHash === receipt.blockHash) return receipt;
+    // Reorganized: wait for the transaction to be re-included, then count again from its new block.
+    try {
+      receipt = again ?? (await client.waitForTransactionReceipt({ hash, timeout: reincludeMs, pollingInterval: 1_000 }));
+    } catch {
+      throw new DroppedByReorg(`transaction left the chain in a reorganization and was not re-included: ${hash}`);
+    }
   }
-  // Re-check the receipt is still canonical after waiting (probabilistic block times can reorg).
-  const again = await client.getTransactionReceipt({ hash });
-  if (again.blockHash !== receipt.blockHash) throw new Error(`transaction was reorganized: ${hash}`);
-  return receipt;
+  throw new DroppedByReorg(`transaction kept being reorganized: ${hash}`);
 }
 
 export { QalibreSettlementAbi };

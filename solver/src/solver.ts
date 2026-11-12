@@ -171,6 +171,18 @@ async function applyNetworkFees(client: PublicClient, dep: Deployment, solver: L
   return trades.map(strip);
 }
 
+/** Simulate only: throws if the batch would revert right now. Used to isolate an order that blocks a batch. */
+export async function simulateBatch(client: PublicClient, dep: Deployment, solver: LocalAccount, plan: BatchPlan): Promise<void> {
+  const trades = await applyNetworkFees(client, dep, solver, plan);
+  await client.simulateContract({
+    address: dep.settlement,
+    abi: QalibreSettlementAbi,
+    functionName: 'settle',
+    args: [plan.args[0], plan.args[1], trades, plan.args[3]] as never,
+    account: solver,
+  });
+}
+
 /** Simulate against the current chain state, then submit and wait for confirmations. */
 export async function executeBatch(client: PublicClient, dep: Deployment, solver: LocalAccount, plan: BatchPlan, confirmations?: bigint): Promise<BatchResult> {
   const trades = await applyNetworkFees(client, dep, solver, plan);

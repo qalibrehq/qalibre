@@ -18,9 +18,10 @@ import {
   waitForConfirmations,
   walletClient,
   GAS_PER_TRADE,
+  DroppedByReorg,
   type Order,
 } from '../../solver/src/chain.js';
-import { executeBatch, planBatch, type SignedOrder } from '../../solver/src/solver.js';
+import { executeBatch, planBatch, simulateBatch, type SignedOrder } from '../../solver/src/solver.js';
 import { clearPair, type PairOrder } from '../../solver/src/clearing.js';
 import { getAmountOut } from '../../solver/src/amm.js';
 
@@ -319,6 +320,20 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
     return Date.now() - oldest >= config.bestWindowMs;
   }
 
+  async function isolateBlockers(queue: SignedOrder[], fees: { feeBps: bigint; surplusShareBps: bigint }): Promise<SignedOrder[]> {
+    const blockers: SignedOrder[] = [];
+    for (const q of queue) {
+      try {
+        const plan = await planBatch(client, dep, [q], fees);
+        if (plan) await simulateBatch(client, dep, solver, plan);
+      } catch (e) {
+        console.warn(`order ${q.id} fails on its own, removing it from the batch:`, (e as Error).message.split('\n')[0]);
+        blockers.push(q);
+      }
+    }
+    return blockers;
+  }
+
   async function runBatch() {
     if (running) return;
     running = true;
@@ -359,7 +374,15 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
               }
               void waitForConfirmations(client, r.hash, config.finalConfirmations)
                 .then(() => db.markConfirmed(r.hash))
-                .catch((e) => console.error(`settlement ${r.hash} did not reach finality:`, (e as Error).message));
+                .catch((e) => {
+                  if (e instanceof DroppedByReorg) {
+                    // The settlement never happened on-chain; settle these orders again and say so plainly.
+                    for (const row of db.requeueByTx(r.hash)) {
+                      void notify(row.tg_id, '<b>Re-settling your order.</b>\nThe QMS network reorganized the block with your trade, so it did not complete. It is back in the queue at your original price limit. Your balance was never at risk.');
+                    }
+                  }
+                  console.error(`settlement ${r.hash} did not reach finality:`, (e as Error).message);
+                });
               const filled = new Set(plan.clearing.fills.map((f) => f.id));
               queue = queue.filter((q) => !filled.has(q.id));
               done = true;
@@ -367,7 +390,18 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
               console.warn(`batch attempt ${attempt + 1} reverted, re-planning:`, (e as Error).message.split('\n')[0]);
             }
           }
-          if (!done) break;
+          if (!done) {
+            // One order must never block everyone else: test each order alone and remove only ones that fail alone.
+            const blockers = await isolateBlockers(queue, fees);
+            if (blockers.length === 0) break; // transient (for example the pool kept moving): retry next tick
+            for (const b of blockers) {
+              db.markStatus(b.id, 'failed', 'This order could not be settled, so nothing was traded. Your balance is unchanged.');
+              const row = db.getOrder(b.id);
+              if (row) void notify(row.tg_id, '<b>Order not filled.</b>\nIt could not be settled, so nothing was traded. Your balance is unchanged. Check your trading permission and limits, then try again.');
+            }
+            const ids = new Set(blockers.map((b) => b.id));
+            queue = queue.filter((q) => !ids.has(q.id));
+          }
         }
       }
     } catch (e) {
@@ -415,6 +449,20 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionActive' }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionValidUntil' }),
     ]);
+    // Live limits and today's usage, read from the wallet contract itself.
+    const limitFor = async (token: Address, decimals: number, symbol: string) => {
+      const [[perTrade, perDay], spent] = await Promise.all([
+        client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'tokenLimit', args: [token] }),
+        client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'spentToday', args: [token] }),
+      ]);
+      const d = 10 ** decimals;
+      return { token, symbol, decimals, perTrade: Number(perTrade) / d, perDay: Number(perDay) / d, spentToday: Number(spent) / d };
+    };
+    const [limQms, limUsdc, anyBuyToken] = await Promise.all([
+      limitFor(TOKENS.WQMS, 18, 'QMS'),
+      limitFor(TOKENS.USDC, 6, 'USDC'),
+      client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionAnyBuyToken' }),
+    ]);
     const qms = Number(wqms) / 1e18;
     const unwrapped = Number(native) / 1e18;
     const usd = Number(usdc) / 1e6;
@@ -439,7 +487,8 @@ export function createService(db: Db, notify: (tgId: number, html: string) => Pr
       unwrappedQms: unwrapped,
       savedUsd,
       trades: filled.length,
-      session: { active, validUntil: Number(validUntil) },
+      session: { active, validUntil: Number(validUntil), anyBuyToken },
+      limits: [limQms, limUsdc],
       testFundsAt: user.last_drip_at + 86_400,
     };
   }

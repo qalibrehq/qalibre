@@ -5,6 +5,10 @@ import { exportKey, loadVault, WrongPin } from '../wallet';
 import { Back, Wordmark } from '../ui/Brand';
 import { Keypad } from '../ui/Keypad';
 import { TestFundsButton } from '../ui/TestFunds';
+import { PinSheet } from '../ui/PinSheet';
+import { actions, runOwnerAction } from '../owner';
+import { toUnits, TOKENS } from '../api';
+import type { Address } from 'viem';
 import type { Nav } from '../App';
 
 async function copy(text: string): Promise<boolean> {
@@ -27,6 +31,7 @@ async function copy(text: string): Promise<boolean> {
 
 export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m: string) => void; refresh: () => void }) {
   const [backup, setBackup] = useState<'closed' | 'pin' | 'shown'>('closed');
+  const [permission, setPermission] = useState<'off' | 'on' | null>(null);
   const [pin, setPin] = useState('');
   const [key, setKey] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
@@ -68,6 +73,36 @@ export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: 
           setPinError(e instanceof WrongPin || /operation/i.test(String(e)) ? 'That PIN is not right.' : (e as Error).message);
         });
     }
+  }
+
+  if (permission && me.account) {
+    const off = permission === 'off';
+    // Turning back on restores the limits currently in the wallet (or the safe defaults), with a fresh trading key.
+    const limits = (['QMS', 'USDC'] as const).map((s) => {
+      const cur = me.limits?.find((l) => l.symbol === s);
+      const t = TOKENS[s];
+      const perTrade = cur && cur.perTrade > 0 ? cur.perTrade : s === 'QMS' ? 10 : 20;
+      const perDay = cur && cur.perDay > 0 ? cur.perDay : s === 'QMS' ? 50 : 100;
+      return { token: t.address as Address, perTrade: toUnits(String(perTrade), t.decimals), perDay: toUnits(String(perDay), t.decimals), label: `${perTrade} per trade, ${perDay} per day` };
+    });
+    return (
+      <PinSheet
+        title={off ? 'Turn off trading permission' : 'Turn trading permission on'}
+        summary={
+          off
+            ? [{ label: 'Effect', value: 'Qalibre can no longer trade for you' }, { label: 'Your funds', value: 'Stay in your wallet' }]
+            : [{ label: 'Valid for', value: '30 days' }, { label: 'QMS', value: limits[0]!.label }, { label: 'USDC', value: limits[1]!.label }]
+        }
+        onCancel={() => setPermission(null)}
+        onUnlocked={async (owner) => {
+          const callData = off ? actions.turnOff() : await actions.turnOn(limits.map(({ token, perTrade, perDay }) => ({ token, perTrade, perDay })));
+          await runOwnerAction(owner, me.account!, callData);
+          toast(off ? 'Trading permission is off. Qalibre can no longer trade for you.' : 'Trading permission is on, with a fresh trading key.');
+          setPermission(null);
+          refresh();
+        }}
+      />
+    );
   }
 
   if (backup === 'pin') {
@@ -127,9 +162,10 @@ export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: 
           <p style={{ margin: 0, fontSize: 12, opacity: 0.72 }}>{me.firstName ? `${me.firstName}'s wallet` : 'Your wallet'} · QMS testnet</p>
           <p className="mono" style={{ margin: '6px 0 0', fontSize: 13, letterSpacing: '0.02em', wordBreak: 'break-all', lineHeight: 1.5 }}>{me.account}</p>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-          <button onClick={copyAddress} style={{ height: 40, borderRadius: 10, border: 0, background: 'var(--paper)', color: 'var(--green)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Copy address</button>
-          <button onClick={() => me.account && openLink(`https://testnet.qmsscan.io/address/${me.account}`)} style={{ height: 40, borderRadius: 10, border: '1px solid rgba(246,244,239,0.4)', background: 'transparent', color: 'var(--paper)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>View on Explorer</button>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+          <button onClick={copyAddress} style={{ height: 40, borderRadius: 10, border: 0, background: 'var(--paper)', color: 'var(--green)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Copy</button>
+          <button onClick={() => nav('send')} style={{ height: 40, borderRadius: 10, border: '1px solid rgba(246,244,239,0.4)', background: 'transparent', color: 'var(--paper)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Send</button>
+          <button onClick={() => me.account && openLink(`https://testnet.qmsscan.io/address/${me.account}`)} style={{ height: 40, borderRadius: 10, border: '1px solid rgba(246,244,239,0.4)', background: 'transparent', color: 'var(--paper)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>Explorer</button>
         </div>
       </div>
 
@@ -144,12 +180,28 @@ export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: 
       <p className="muted" style={{ margin: '6px 0 0', fontSize: 14, lineHeight: 1.55 }}>Qalibre can only trade within these limits. It can never withdraw your money.</p>
       <div className="rows strong" style={{ marginTop: 14 }}>
         <div className="row"><span>Trading permission</span><span style={{ color: me.session?.active ? 'var(--green)' : 'var(--danger)', fontWeight: 600 }}>{me.session?.active ? `On · ${days} days left` : 'Off'}</span></div>
-        <div className="row"><span>Per trade</span><span className="num" style={{ color: 'var(--ink)' }}>10 QMS or 20 USDC</span></div>
-        <div className="row"><span>Per day</span><span className="num" style={{ color: 'var(--ink)' }}>50 QMS or 100 USDC</span></div>
+        {(me.limits ?? []).map((l) => (
+          <div key={l.symbol} className="row" style={{ alignItems: 'flex-start' }}>
+            <span>{l.symbol}</span>
+            <span className="num" style={{ color: 'var(--ink)', textAlign: 'right' }}>
+              {l.perTrade.toLocaleString('en-US')} per trade · {l.perDay.toLocaleString('en-US')} per day
+              <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>{l.spentToday.toLocaleString('en-US', { maximumFractionDigits: 4 })} used today</span>
+            </span>
+          </div>
+        ))}
         <div className="row"><span>Wallet owner</span><span className="mono" style={{ fontSize: 13, color: 'var(--ink)' }}>{short(me.owner)}</span></div>
       </div>
-      <p className="muted" style={{ margin: '14px 0 0', fontSize: 12, lineHeight: 1.55 }}>
-        Editing limits, withdrawing and turning the permission off arrive in the next update, signed with your PIN-protected key. The permission also expires on its own.
+
+      <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <button className="btn btn-line" onClick={() => nav('limits')}>Edit limits</button>
+        {me.session?.active ? (
+          <button className="btn btn-danger" onClick={() => setPermission('off')}>Turn off trading permission</button>
+        ) : (
+          <button className="btn btn-green" onClick={() => setPermission('on')}>Turn trading permission on</button>
+        )}
+      </div>
+      <p className="muted" style={{ margin: '12px 0 0', fontSize: 12, lineHeight: 1.55 }}>
+        Signed with your PIN on this device. Network fees for these actions are on us: you never pay to protect or move your own money.
       </p>
     </div>
   );

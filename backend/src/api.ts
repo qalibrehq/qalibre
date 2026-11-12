@@ -7,6 +7,7 @@ import { config } from './config.js';
 import type { Db } from './db.js';
 import { verifyInitData, type TelegramUser } from './telegram.js';
 import { UserError, type Service } from './service.js';
+import type { OwnerOps } from './ownerops.js';
 
 const MAX_BODY = 16 * 1024;
 
@@ -107,7 +108,7 @@ async function serveStatic(pathname: string, res: ServerResponse) {
   return true;
 }
 
-export function startApi(db: Db, svc: Service) {
+export function startApi(db: Db, svc: Service, owner: OwnerOps) {
   const server = createServer(async (req, res) => {
     const origin = req.headers.origin;
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -146,6 +147,19 @@ export function startApi(db: Db, svc: Service) {
         const body = await readJson(req);
         if (typeof body.signature !== 'string' || !isHex(body.signature) || body.signature.length !== 132) throw new UserError('Invalid signature.');
         return send(res, 200, await svc.completeRegistration(user.id, body.signature as Hex), origin);
+      }
+      if (req.method === 'POST' && url.pathname === '/api/owner/prepare') {
+        const body = await readJson(req);
+        if (typeof body.callData !== 'string' || !isHex(body.callData) || body.callData.length > 20_000) throw new UserError('Invalid request.');
+        return send(res, 200, await owner.prepare(user.id, body.callData as Hex), origin);
+      }
+      if (req.method === 'POST' && url.pathname === '/api/owner/send') {
+        const body = await readJson(req);
+        if (!body.op || typeof body.op !== 'object') throw new UserError('Invalid request.');
+        return send(res, 200, await owner.send(user.id, body.op as Record<string, string>), origin);
+      }
+      if (req.method === 'POST' && url.pathname === '/api/owner/session-key') {
+        return send(res, 200, owner.newSessionKey(user.id), origin);
       }
       if (req.method === 'POST' && url.pathname === '/api/test-funds') {
         return send(res, 200, await svc.requestTestFunds(user.id), origin);

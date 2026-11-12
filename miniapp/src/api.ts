@@ -38,7 +38,8 @@ export interface Me {
   totalUsd?: number;
   savedUsd?: number;
   trades?: number;
-  session?: { active: boolean; validUntil: number };
+  session?: { active: boolean; validUntil: number; anyBuyToken?: boolean };
+  limits?: { token: string; symbol: string; decimals: number; perTrade: number; perDay: number; spentToday: number }[];
   unwrappedQms?: number;
   testFundsAt?: number;
 }

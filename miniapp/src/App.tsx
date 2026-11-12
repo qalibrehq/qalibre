@@ -7,9 +7,11 @@ import { Trade } from './screens/Trade';
 import { Receipt } from './screens/Receipt';
 import { Activity } from './screens/Activity';
 import { Control } from './screens/Control';
+import { Limits } from './screens/Limits';
+import { Send } from './screens/Send';
 import { Wordmark } from './ui/Brand';
 
-type Route = { name: 'home' } | { name: 'trade'; side: 'buy' | 'sell' } | { name: 'receipt'; orderId: string } | { name: 'activity' } | { name: 'control' };
+type Route = { name: 'home' } | { name: 'trade'; side: 'buy' | 'sell' } | { name: 'receipt'; orderId: string } | { name: 'activity' } | { name: 'control' } | { name: 'limits' } | { name: 'send' };
 export type Nav = (name: Route['name'], params?: Record<string, string>) => void;
 
 export function App() {
@@ -45,11 +47,12 @@ export function App() {
   useEffect(() => {
     const back = tg?.BackButton;
     if (!back) return;
-    const goHome = () => setRoute({ name: 'home' });
+    // Sub-screens of Wallet go back to Wallet; everything else goes Home.
+    const goBack = () => setRoute(route.name === 'limits' || route.name === 'send' ? { name: 'control' } : { name: 'home' });
     if (route.name === 'home') back.hide();
     else back.show();
-    back.onClick(goHome);
-    return () => back.offClick(goHome);
+    back.onClick(goBack);
+    return () => back.offClick(goBack);
   }, [route.name]);
 
   const nav: Nav = useCallback((name, params = {}) => {
@@ -98,6 +101,8 @@ export function App() {
       {route.name === 'receipt' && <Receipt orderId={route.orderId} nav={nav} />}
       {route.name === 'activity' && <Activity nav={nav} />}
       {route.name === 'control' && <Control me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
+      {route.name === 'limits' && <Limits me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
+      {route.name === 'send' && <Send me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
       {toastMsg && <div className="toast" role="alert">{toastMsg}</div>}
     </>
   );

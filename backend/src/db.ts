@@ -92,7 +92,7 @@ export function openDb(path: string) {
     );
   `);
 
-  for (const ddl of ['ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN max_network_fee TEXT NOT NULL DEFAULT '0'", 'ALTER TABLE orders ADD COLUMN network_fee TEXT', 'ALTER TABLE users ADD COLUMN settlement TEXT', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER']) {
+  for (const ddl of ['ALTER TABLE users ADD COLUMN pending_session_address TEXT', 'ALTER TABLE users ADD COLUMN pending_session_enc TEXT', 'ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN max_network_fee TEXT NOT NULL DEFAULT '0'", 'ALTER TABLE orders ADD COLUMN network_fee TEXT', 'ALTER TABLE users ADD COLUMN settlement TEXT', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER']) {
     try {
       db.exec(ddl);
     } catch {
@@ -113,6 +113,15 @@ export function openDb(path: string) {
     },
     setAccount(tgId: number, account: string, settlement: string) {
       db.prepare('UPDATE users SET account = ?, settlement = ?, pending_setup = NULL, dripped = 0, last_drip_at = 0 WHERE tg_id = ?').run(account, settlement, tgId);
+    },
+    setPendingSession(tgId: number, address: string, enc: string) {
+      db.prepare('UPDATE users SET pending_session_address = ?, pending_session_enc = ? WHERE tg_id = ?').run(address, enc, tgId);
+    },
+    /** Make the issued key the live trading key, only if it is the one the owner just approved on-chain. */
+    activatePendingSession(tgId: number, approvedKey: string) {
+      db.prepare(
+        'UPDATE users SET session_address = pending_session_address, session_key_enc = pending_session_enc, pending_session_address = NULL, pending_session_enc = NULL WHERE tg_id = ? AND lower(pending_session_address) = lower(?)',
+      ).run(tgId, approvedKey);
     },
     markDripped(tgId: number) {
       db.prepare('UPDATE users SET dripped = 1, last_drip_at = ? WHERE tg_id = ?').run(now(), tgId);
@@ -142,6 +151,17 @@ export function openDb(path: string) {
     },
     markFilled(id: string, f: { tx: string; buy: string; fee: string; networkFee: string; direct: string; batchId: number }) {
       db.prepare("UPDATE orders SET status = 'filled', tx_hash = ?, buy_amount = ?, fee = ?, network_fee = ?, direct_quote = ?, batch_id = ?, updated_at = ? WHERE id = ?").run(f.tx, f.buy, f.fee, f.networkFee, f.direct, f.batchId, now(), id);
+    },
+    /** A settlement vanished in a reorganization: its fills never happened on-chain, so the orders go back in the queue. */
+    requeueByTx(txHash: string): OrderRow[] {
+      const rows = db.prepare("SELECT * FROM orders WHERE tx_hash = ? AND status = 'filled'").all(txHash) as unknown as OrderRow[];
+      db.prepare("UPDATE orders SET status = 'pending', tx_hash = NULL, buy_amount = NULL, fee = NULL, network_fee = NULL, direct_quote = NULL, batch_id = NULL, updated_at = ? WHERE tx_hash = ? AND status = 'filled'").run(now(), txHash);
+      return rows;
+    },
+    /** Cancel a user's waiting orders (for example after their trading key changed). Returns how many. */
+    cancelPending(tgId: number, reason: string): number {
+      const r = db.prepare("UPDATE orders SET status = 'expired', reason = ?, updated_at = ? WHERE tg_id = ? AND status = 'pending'").run(reason, now(), tgId);
+      return Number(r.changes);
     },
     markStatus(id: string, status: 'expired' | 'failed', reason: string) {
       db.prepare('UPDATE orders SET status = ?, reason = ?, updated_at = ? WHERE id = ?').run(status, reason, now(), id);
