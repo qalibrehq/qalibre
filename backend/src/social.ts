@@ -15,7 +15,7 @@ import type { Db, OrderRow } from './db.js';
 import { Bot, esc } from './telegram.js';
 import { REFERRAL_DAYS, REFERRAL_SHARE_BPS, type Service } from './service.js';
 import { checkToken, tokenInfo, type Safety } from './tokens.js';
-import { fillCard, inviteCard, positionCard, safetyCard, safetyHeadline, savingsCard, statsCard } from './cards.js';
+import { fillCard, inviteCard, positionCard, safetyCard, safetyHeadline, savingsCard, statsCard, type Person } from './cards.js';
 import { improvement } from './value.js';
 import { tokenLogo } from './logos.js';
 import { fmtSig, fmtToken } from './chat.js';
@@ -33,6 +33,11 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
     recent.push(now);
     perChat.set(chatId, recent);
     return true;
+  }
+
+  /** The sharer as shown on their own cards: first name and Telegram photo (if they have one). */
+  async function personOf(tgId: number): Promise<Person> {
+    return { name: db.getUser(tgId)?.first_name?.trim() || 'A Qalibre trader', photo: await bot.userPhoto(tgId) };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -58,7 +63,7 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
     const link = inviteLink(tgId);
     const r = db.referralStats(tgId);
     const share = REFERRAL_SHARE_BPS / 100;
-    const png = inviteCard({ sharePct: share, days: REFERRAL_DAYS, link: link.replace(/^https:\/\//, '') });
+    const png = inviteCard({ sharePct: share, days: REFERRAL_DAYS, person: await personOf(tgId), link: link.replace(/^https:\/\//, '') });
     const caption = [
       `<code>${link}</code>`,
       '',
@@ -181,6 +186,7 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
     const png = fillCard({
       side: sold ? 'Sold' : 'Bought',
       token: { symbol: subject.symbol, address: subject.address, logo: await tokenLogo(subject.address) },
+      person: await personOf(tgId),
       got: fmtToken(BigInt(o.buy_amount!), buy.decimals),
       gotSymbol: buy.symbol,
       paid: fmtToken(BigInt(o.sell_amount), sell.decimals),
@@ -194,7 +200,7 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
   async function sharePosition(tgId: number, token: Address) {
     const p = (await svc.positions(tgId)).find((x) => x.token.address.toLowerCase() === token.toLowerCase());
     if (!p || p.pnlPct === null || p.costQms === null) return void (await bot.sendMessage(tgId, 'There is no position with a known cost to share for this token.'));
-    const png = positionCard({ symbol: p.token.symbol, pnlPct: p.pnlPct, held: fmtToken(p.balance, p.token.decimals), cost: fmtSig(Number(p.costQms) / 1e18), value: fmtSig(Number(p.exitQms) / 1e18), token: { symbol: p.token.symbol, address: p.token.address, logo: await tokenLogo(p.token.address) }, link: shortLink });
+    const png = positionCard({ symbol: p.token.symbol, pnlPct: p.pnlPct, held: fmtToken(p.balance, p.token.decimals), cost: fmtSig(Number(p.costQms) / 1e18), value: fmtSig(Number(p.exitQms) / 1e18), token: { symbol: p.token.symbol, address: p.token.address, logo: await tokenLogo(p.token.address) }, person: await personOf(tgId), link: shortLink });
     await sendShare(tgId, png, `${p.pnlPct >= 0 ? '+' : ''}${p.pnlPct.toFixed(1)}% on ${p.token.symbol}, traded with Qalibre.`);
   }
 
@@ -210,7 +216,7 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
     }
     const first = db.filledOrders(tgId)[0];
     const since = new Date((first?.created_at ?? Date.now() / 1000) * 1000).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-    const png = savingsCard({ savedUsd: p.savedUsd >= 100 ? p.savedUsd.toFixed(0) : p.savedUsd.toFixed(2), trades: p.trades, since, link: shortLink });
+    const png = savingsCard({ savedUsd: p.savedUsd >= 100 ? p.savedUsd.toFixed(0) : p.savedUsd.toFixed(2), trades: p.trades, since, person: await personOf(tgId), link: shortLink });
     await sendShare(tgId, png, `Saved $${p.savedUsd.toFixed(2)} across ${p.trades} trades with Qalibre, compared with swapping directly.`);
   }
 

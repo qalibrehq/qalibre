@@ -59,6 +59,28 @@ interface Card {
   detail?: string;
   /** The token the card is about: shown as a header with its logo (or designed badge), symbol and context. */
   token?: TokenMark;
+  /** Who shared it: their Telegram photo and first name, in the footer. Only on cards a person shares. */
+  person?: Person;
+}
+
+/** The person sharing a card. `photo` is a data URI of their Telegram photo, or null for their initial. */
+export interface Person {
+  name: string;
+  photo: string | null;
+}
+
+/** The sharer in the footer: photo (or initial on paper), first name, and a quiet "on Qalibre". */
+function personMark(p: Person, x0: number, cy: number, bg: string): string {
+  const r = 31;
+  const cx = x0 + r;
+  const ring = `<circle cx="${cx}" cy="${cy}" r="${r - 0.75}" fill="none" stroke="${C.paper}" stroke-opacity="0.3" stroke-width="1.5"/>`;
+  const name = p.name.length > 18 ? p.name.slice(0, 17) + '…' : p.name;
+  const face = p.photo
+    ? `<clipPath id="pf"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath><image href="${p.photo}" x="${cx - r}" y="${cy - r}" width="${2 * r}" height="${2 * r}" preserveAspectRatio="xMidYMid slice" clip-path="url(#pf)"/>`
+    : `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${C.paper}"/><text x="${cx}" y="${cy + 8}" text-anchor="middle" font-family="Inter" font-weight="600" font-size="26" fill="${bg}">${x(name.slice(0, 1).toUpperCase())}</text>`;
+  return `${face}${ring}
+  <text x="${x0 + 2 * r + 16}" y="${cy - 3}" font-family="Inter" font-weight="600" font-size="24" fill="${C.paper}">${x(name)}</text>
+  <text x="${x0 + 2 * r + 16}" y="${cy + 22}" font-family="Inter" font-weight="500" font-size="17" fill="${C.paper}" fill-opacity="0.6">on Qalibre</text>`;
 }
 
 /** A token's identity on a card. `logo` is a data URI of a real logo, or null for the designed badge. */
@@ -133,7 +155,7 @@ function svg(c: Card, link: string): string {
   <text x="${L - Math.round(heroSize * 0.05)}" y="${heroY}" font-family="Inter" font-weight="600" font-size="${heroSize}" letter-spacing="${(-heroSize * 0.045).toFixed(1)}" fill="${c.heroTone === 'alarm' ? C.alarm : c.heroTone === 'brass' ? C.brass : C.paper}">${typeset(c.hero, heroSize)}${unit}</text>
   <text x="${L}" y="${lineY}" font-family="Inter" font-weight="500" font-size="32" letter-spacing="-0.3" fill="${c.lineTone === 'alarm' ? C.alarm : c.lineTone === 'brass' ? C.brass : C.paper}" fill-opacity="${c.lineTone && c.lineTone !== 'paper' ? 1 : 0.92}">${x(c.line)}</text>
   ${c.detail ? `<text x="${L}" y="${lineY + 46}" font-family="Inter" font-weight="400" font-size="22" fill="${C.paper}" fill-opacity="0.5">${typeset(c.detail, 22)}</text>` : ''}
-  ${wordmark(L, H - 96, 30, C.paper, bg)}
+  ${c.person ? personMark(c.person, L, H - 88, bg) : wordmark(L, H - 96, 30, C.paper, bg)}
   <text x="${W - L}" y="${H - 70}" text-anchor="end" font-family="Inter" font-weight="500" font-size="20" fill="${C.paper}" fill-opacity="0.6">${x(link)}</text>
 </svg>`;
 }
@@ -151,28 +173,28 @@ function render(c: Card, link: string): Buffer {
  * A trade. When Qalibre beat the direct swap, the improvement is the story; otherwise the amount received is,
  * with the honest note that it was the direct price.
  */
-export function fillCard(p: { side: 'Bought' | 'Sold'; got: string; gotSymbol: string; paid: string; paidSymbol: string; vsDirectPct: number; token: TokenMark; link: string }): Buffer {
+export function fillCard(p: { side: 'Bought' | 'Sold'; got: string; gotSymbol: string; paid: string; paidSymbol: string; vsDirectPct: number; token: TokenMark; person?: Person; link: string }): Buffer {
   const better = p.vsDirectPct > 0.0005;
   const over = `${p.side} on QMS`;
   return render(
     better
-      ? { field: 'green', token: p.token, over, hero: `+${p.vsDirectPct.toFixed(2)}%`, line: 'better than a direct swap on QWAP', detail: `${p.got} ${p.gotSymbol} for ${p.paid} ${p.paidSymbol}` }
-      : { field: 'green', token: p.token, over, hero: `+${p.got}`, line: `${p.gotSymbol} for ${p.paid} ${p.paidSymbol}`, detail: 'At the direct price. Never worse than a direct swap.' },
+      ? { field: 'green', token: p.token, person: p.person, over, hero: `+${p.vsDirectPct.toFixed(2)}%`, line: 'better than a direct swap on QWAP', detail: `${p.got} ${p.gotSymbol} for ${p.paid} ${p.paidSymbol}` }
+      : { field: 'green', token: p.token, person: p.person, over, hero: `+${p.got}`, line: `${p.gotSymbol} for ${p.paid} ${p.paidSymbol}`, detail: 'At the direct price. Never worse than a direct swap.' },
     p.link,
   );
 }
 
-export function positionCard(p: { symbol: string; pnlPct: number; held: string; cost: string; value: string; token: TokenMark; link: string }): Buffer {
+export function positionCard(p: { symbol: string; pnlPct: number; held: string; cost: string; value: string; token: TokenMark; person?: Person; link: string }): Buffer {
   const up = p.pnlPct >= 0;
   return render(
-    { field: up ? 'green' : 'ink', token: p.token, over: 'Position on QMS', hero: `${up ? '+' : '−'}${Math.abs(p.pnlPct).toFixed(1)}%`, line: `${p.cost} QMS in, ${p.value} QMS if sold now`, detail: `${p.held} ${p.symbol} held` },
+    { field: up ? 'green' : 'ink', token: p.token, person: p.person, over: 'Position on QMS', hero: `${up ? '+' : '−'}${Math.abs(p.pnlPct).toFixed(1)}%`, line: `${p.cost} QMS in, ${p.value} QMS if sold now`, detail: `${p.held} ${p.symbol} held` },
     p.link,
   );
 }
 
-export function savingsCard(p: { savedUsd: string; trades: number; since: string; link: string }): Buffer {
+export function savingsCard(p: { savedUsd: string; trades: number; since: string; person?: Person; link: string }): Buffer {
   return render(
-    { field: 'green', over: 'Saved with Qalibre', hero: `$${p.savedUsd}`, line: 'compared with swapping directly', detail: `${p.trades} ${p.trades === 1 ? 'trade' : 'trades'} since ${p.since}` },
+    { field: 'green', person: p.person, over: 'Saved with Qalibre', hero: `$${p.savedUsd}`, line: 'compared with swapping directly', detail: `${p.trades} ${p.trades === 1 ? 'trade' : 'trades'} since ${p.since}` },
     p.link,
   );
 }
@@ -257,9 +279,9 @@ export function safetyHeadline(s: Safety): { headline: string; reason: string } 
 }
 
 /** The invite card: what a friend's invite earns, with the inviter's own link in the corner. */
-export function inviteCard(p: { sharePct: number; days: number; link: string }): Buffer {
+export function inviteCard(p: { sharePct: number; days: number; person?: Person; link: string }): Buffer {
   return render(
-    { field: 'green', over: 'Invite friends to Qalibre', hero: `${p.sharePct}%`, line: 'of Qalibre’s fee on your friends’ trades', detail: `For ${p.days} days. Your friends pay exactly the same.` },
+    { field: 'green', person: p.person, over: p.person ? `${p.person.name} invites you to Qalibre` : 'Invite friends to Qalibre', hero: `${p.sharePct}%`, line: 'of Qalibre’s fee on your friends’ trades', detail: `For ${p.days} days. Your friends pay exactly the same.` },
     p.link,
   );
 }

@@ -86,6 +86,38 @@ export class Bot {
     return json.result;
   }
 
+  private photoCache = new Map<number, { at: number; uri: string | null }>();
+
+  /**
+   * The user's current Telegram profile photo as a data URI (JPEG/PNG only, at most 512 KB), or null when they
+   * have none or hide it. Cached for an hour. Used only on cards the user shares themselves.
+   */
+  async userPhoto(userId: number): Promise<string | null> {
+    const hit = this.photoCache.get(userId);
+    if (hit && Date.now() - hit.at < 3_600_000) return hit.uri;
+    let uri: string | null = null;
+    try {
+      const p = await this.call<{ total_count: number; photos: { file_id: string; width: number; file_size?: number }[][] }>('getUserProfilePhotos', { user_id: userId, limit: 1 });
+      const sizes = p.photos[0] ?? [];
+      // The smallest size that is still sharp on a card (the badge is drawn at 88 px; 160+ is plenty).
+      const pick = [...sizes].sort((a, b) => a.width - b.width).find((s) => s.width >= 160) ?? sizes[sizes.length - 1];
+      if (pick) {
+        const f = await this.call<{ file_path?: string }>('getFile', { file_id: pick.file_id });
+        if (f.file_path) {
+          const res = await fetch(`https://api.telegram.org/file/bot${this.token}/${f.file_path}`, { signal: AbortSignal.timeout(8_000) });
+          const buf = new Uint8Array(await res.arrayBuffer());
+          const jpeg = buf[0] === 0xff && buf[1] === 0xd8;
+          const png = buf[0] === 0x89 && buf[1] === 0x50;
+          if (res.ok && buf.byteLength <= 512 * 1024 && (jpeg || png)) uri = `data:image/${jpeg ? 'jpeg' : 'png'};base64,${Buffer.from(buf).toString('base64')}`;
+        }
+      }
+    } catch {
+      /* no photo, privacy settings, or Telegram unavailable: the card shows the initial */
+    }
+    this.photoCache.set(userId, { at: Date.now(), uri });
+    return uri;
+  }
+
   /** Replace the image, caption and buttons of a photo message we sent (editMessageMedia, multipart). */
   async editPhoto(chatId: number, messageId: number, png: Buffer, caption: string, replyMarkup?: unknown): Promise<void> {
     const form = new FormData();
