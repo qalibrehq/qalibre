@@ -674,7 +674,7 @@ export function createService(db: Db, notify: Notify) {
   }
 
   /** Public numbers: what everyone has saved versus swapping directly. Cached for a minute. */
-  let statsCache: { at: number; v: { savedUsd: number; trades: number; traders: number; groups: number; since: number } } | null = null;
+  let statsCache: { at: number; v: { savedUsd: number; trades: number; traders: number; groups: number; since: number; checked: number; blocked: number } } | null = null;
   async function publicStats() {
     if (statsCache && Date.now() - statsCache.at < 60_000) return statsCache.v;
     const filled = db.filledOrders();
@@ -685,6 +685,7 @@ export function createService(db: Db, notify: Notify) {
       traders: new Set(filled.map((o) => o.tg_id)).size,
       groups: db.groupCount(),
       since: filled[0]?.created_at ?? Math.floor(Date.now() / 1000),
+      ...db.checkCounts(),
     };
     statsCache = { at: Date.now(), v };
     return v;

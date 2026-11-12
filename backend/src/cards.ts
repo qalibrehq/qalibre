@@ -255,3 +255,30 @@ export function safetyHeadline(s: Safety): { headline: string; reason: string } 
   if (s.verdict === 'caution') return { headline: 'Some risk', reason: top.length ? top.join('. ') + '.' : 'Read the details before buying.' };
   return { headline: 'Low risk', reason: 'Simulated buy and sale went through, with no hidden tax.' };
 }
+
+/** The invite card: what a friend's invite earns, with the inviter's own link in the corner. */
+export function inviteCard(p: { sharePct: number; days: number; link: string }): Buffer {
+  return render(
+    { field: 'green', over: 'Invite friends to Qalibre', hero: `${p.sharePct}%`, line: 'of Qalibre’s fee on your friends’ trades', detail: `For ${p.days} days. Your friends pay exactly the same.` },
+    p.link,
+  );
+}
+
+/**
+ * Public numbers. Scams blocked leads: it is true from the first day. Savings appear only once there are some,
+ * so the card never shows a zero as if it were an achievement.
+ */
+export function statsCard(p: { checked: number; blocked: number; trades: number; traders: number; savedUsd: number; link: string }): Buffer {
+  const saved = p.savedUsd >= 0.01 ? `$${p.savedUsd >= 100 ? Math.round(p.savedUsd).toLocaleString('en-US') : p.savedUsd.toFixed(2)} saved versus swapping directly` : 'Every trade at or above the direct swap price';
+  return render(
+    {
+      field: 'green',
+      over: 'Qalibre on QMS, so far',
+      hero: p.blocked.toLocaleString('en-US'),
+      unit: p.blocked === 1 ? 'scam blocked' : 'scams blocked',
+      line: `${p.checked.toLocaleString('en-US')} tokens checked  ·  ${p.trades.toLocaleString('en-US')} trades`,
+      detail: saved,
+    },
+    p.link,
+  );
+}

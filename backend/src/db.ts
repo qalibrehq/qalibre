@@ -116,6 +116,11 @@ export function openDb(path: string) {
       created_at INTEGER NOT NULL,
       paid_tx TEXT
     );
+    CREATE TABLE IF NOT EXISTS token_checks (
+      token TEXT PRIMARY KEY,
+      verdict TEXT NOT NULL,
+      checked_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS batches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tx_hash TEXT,
@@ -300,6 +305,13 @@ export function openDb(path: string) {
     },
     getBatch(id: number): { id: number; tx_hash: string; block: number } | undefined {
       return db.prepare('SELECT id, tx_hash, block FROM batches WHERE id = ?').get(id) as { id: number; tx_hash: string; block: number } | undefined;
+    },
+    /** Latest verdict per token, for the public numbers (tokens checked, scams blocked). */
+    recordCheck(token: string, verdict: string) {
+      db.prepare('INSERT INTO token_checks (token, verdict, checked_at) VALUES (?, ?, ?) ON CONFLICT(token) DO UPDATE SET verdict = excluded.verdict, checked_at = excluded.checked_at').run(token.toLowerCase(), verdict, now());
+    },
+    checkCounts(): { checked: number; blocked: number } {
+      return db.prepare("SELECT count(*) AS checked, coalesce(sum(verdict = 'blocked'), 0) AS blocked FROM token_checks").get() as { checked: number; blocked: number };
     },
     groupCount(): number {
       return (db.prepare('SELECT count(*) AS n FROM groups').get() as { n: number }).n;

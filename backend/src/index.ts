@@ -7,8 +7,10 @@ import { setupBot, startBot } from './bot.js';
 import { createOwnerOps } from './ownerops.js';
 import { createChat, type Chat } from './chat.js';
 import { createSocial } from './social.js';
+import { onTokenChecked } from './tokens.js';
 
 const db = openDb(config.dbPath);
+onTokenChecked((s) => db.recordCheck(s.token.address, s.verdict));
 const bot = new Bot(config.botToken);
 let chat: Chat | null = null;
 const svc = createService(db, async (tgId, html, ctx) => {

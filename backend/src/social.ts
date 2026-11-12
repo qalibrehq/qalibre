@@ -15,7 +15,7 @@ import type { Db, OrderRow } from './db.js';
 import { Bot, esc } from './telegram.js';
 import { REFERRAL_DAYS, REFERRAL_SHARE_BPS, type Service } from './service.js';
 import { checkToken, tokenInfo, type Safety } from './tokens.js';
-import { fillCard, positionCard, safetyCard, safetyHeadline, savingsCard } from './cards.js';
+import { fillCard, inviteCard, positionCard, safetyCard, safetyHeadline, savingsCard, statsCard } from './cards.js';
 import { improvement } from './value.js';
 import { tokenLogo } from './logos.js';
 import { fmtSig, fmtToken } from './chat.js';
@@ -58,23 +58,20 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
     const link = inviteLink(tgId);
     const r = db.referralStats(tgId);
     const share = REFERRAL_SHARE_BPS / 100;
-    await bot.sendMessage(
-      tgId,
-      [
-        '<b>Invite friends</b>',
-        '',
-        `When someone joins with your link, you earn ${share}% of Qalibre's fee on their trades for ${REFERRAL_DAYS} days. It comes out of our fee, so your friends pay exactly the same.`,
-        '',
-        `<code>${link}</code>`,
-        '',
-        `Invited  ${r.invited}  ·  trading  ${r.trading}`,
-        `Earned  ${fmtSig(Number(r.earned) / 1e18)} QMS  ·  paid  ${fmtSig(Number(r.paid) / 1e18)} QMS`,
-        '',
-        '<i>Rewards are paid in QMS to your Qalibre wallet each week.</i>',
-      ].join('\n'),
-      { reply_markup: { inline_keyboard: [[{ text: 'Share your link', url: `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Trade on QMS with Qalibre: matched first, never worse than a direct swap, scam tokens blocked.')}` }]] } },
-    );
+    const png = inviteCard({ sharePct: share, days: REFERRAL_DAYS, link: link.replace(/^https:\/\//, '') });
+    const caption = [
+      `<code>${link}</code>`,
+      '',
+      `Invited ${r.invited}  ·  trading ${r.trading}`,
+      `Earned ${fmtSig(Number(r.earned) / 1e18)} QMS  ·  paid ${fmtSig(Number(r.paid) / 1e18)} QMS`,
+      '',
+      `<i>You earn ${share}% of Qalibre's fee on their trades for ${REFERRAL_DAYS} days, paid weekly in QMS to your wallet. It comes out of our fee, so your friends pay the same.</i>`,
+    ].join('\n');
+    await bot.sendPhoto(tgId, png, caption, {
+      reply_markup: { inline_keyboard: [[{ text: 'Share your link', url: `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Trade on QMS with Qalibre: scam tokens blocked before you buy, never worse than a direct swap.')}` }]] },
+    });
   }
+
 
   // ---------------------------------------------------------------------------------------------
   // Safety cards (groups, and the "Share" on a token)
@@ -204,6 +201,13 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
   async function shareSavings(tgId: number) {
     const p = await svc.portfolio(tgId);
     if (!p.registered || p.trades === 0) return void (await bot.sendMessage(tgId, 'Make a trade first. Your savings card shows what Qalibre saved you compared with swapping directly.'));
+    if (p.savedUsd < 0.01) {
+      return void (await bot.sendMessage(tgId, [
+        `<b>No savings yet, and no fees either.</b>`,
+        '',
+        `Your ${p.trades} ${p.trades === 1 ? 'trade' : 'trades'} settled at exactly the direct QWAP price, because no other trader took the other side in the same batch. Savings come when buyers and sellers meet; until then you pay QWAP's price and nothing to Qalibre.`,
+      ].join('\n')));
+    }
     const first = db.filledOrders(tgId)[0];
     const since = new Date((first?.created_at ?? Date.now() / 1000) * 1000).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
     const png = savingsCard({ savedUsd: p.savedUsd >= 100 ? p.savedUsd.toFixed(0) : p.savedUsd.toFixed(2), trades: p.trades, since, link: shortLink });
@@ -219,20 +223,16 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
   }
 
   async function statsMessage(chatId: number, extra: Record<string, unknown> = {}) {
-    const s = await svc.publicStats();
-    await bot.sendMessage(
-      chatId,
-      [
-        '<b>Qalibre, so far</b>',
-        '',
-        `Saved versus swapping directly  <b>$${s.savedUsd.toFixed(2)}</b>`,
-        `Trades  ${s.trades.toLocaleString('en-US')}  ·  traders  ${s.traders.toLocaleString('en-US')}  ·  groups protected  ${s.groups.toLocaleString('en-US')}`,
-        '',
-        'The settlement contract refuses any trade that pays less than a direct swap.',
-      ].join('\n'),
-      extra,
-    );
+    const st = await svc.publicStats();
+    const png = statsCard({ checked: st.checked, blocked: st.blocked, trades: st.trades, traders: st.traders, savedUsd: st.savedUsd, link: shortLink });
+    const caption = [
+      `<b>${st.blocked.toLocaleString('en-US')}</b> scam ${st.blocked === 1 ? 'token' : 'tokens'} blocked out of <b>${st.checked.toLocaleString('en-US')}</b> checked.`,
+      `${st.trades.toLocaleString('en-US')} trades by ${st.traders.toLocaleString('en-US')} ${st.traders === 1 ? 'trader' : 'traders'}  ·  ${st.groups.toLocaleString('en-US')} ${st.groups === 1 ? 'group' : 'groups'} protected`,
+      st.savedUsd >= 0.01 ? `$${st.savedUsd.toFixed(2)} saved versus swapping directly.` : 'No trade has needed a better match yet: every one settled at the direct QWAP price, with no Qalibre fee.',
+    ].join('\n');
+    await bot.sendPhoto(chatId, png, caption, extra);
   }
+
 
   return { applyInvite, inviteMessage, inviteLink, onGroupMessage, onMembership, shareFill, sharePosition, shareSavings, statsMessage, safetyImage };
 }

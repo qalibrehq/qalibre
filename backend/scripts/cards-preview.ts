@@ -11,3 +11,6 @@ writeFileSync(join(out, 'position.png'), positionCard({ symbol: 'QTDOG', pnlPct:
 writeFileSync(join(out, 'position-loss.png'), positionCard({ symbol: 'QTDOG', pnlPct: -12.4, held: '61,540.99', cost: '0.01', value: '0.0088', token: dog, link }));
 writeFileSync(join(out, 'savings.png'), savingsCard({ savedUsd: '1.24', trades: 18, since: 'Nov 2026', link }));
 console.log('ok');
+import { inviteCard, statsCard } from '../src/cards.js';
+writeFileSync(join(out, 'invite.png'), inviteCard({ sharePct: 20, days: 90, link: 't.me/QalibreBot?start=r_Hk3pQ' }));
+writeFileSync(join(out, 'stats.png'), statsCard({ checked: 3, blocked: 2, trades: 4, traders: 1, savedUsd: 0, link: 't.me/QalibreBot' }));

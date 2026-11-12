@@ -146,6 +146,12 @@ const POWERS: { sel: string; title: string; detail: string; weight: number }[] =
 const EIP1967_IMPL = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
 
 const safetyCache = new Map<string, Safety>();
+
+/** Listeners told about every completed check (the public counters). Registry tokens are not counted. */
+const checkedListeners: ((s: Safety) => void)[] = [];
+export function onTokenChecked(fn: (s: Safety) => void) {
+  checkedListeners.push(fn);
+}
 const CACHE_MS = 120_000;
 
 async function explorer<T>(path: string): Promise<T | null> {
@@ -323,5 +329,12 @@ export async function checkToken(address: Address, opts: { fresh?: boolean } = {
   findings.sort((a, b) => order[a.level] - order[b.level]);
   const s: Safety = { token, verdict, score, findings, tradable: !blocked, reason: blocked, priceQms, priceUsd: priceQms * usdPerQms, liquidityUsd, checkedAt: Date.now() };
   safetyCache.set(key, s);
+  for (const fn of checkedListeners) {
+    try {
+      fn(s);
+    } catch {
+      /* a counter must never break a check */
+    }
+  }
   return s;
 }
