@@ -151,6 +151,16 @@ export function Trade({ me, nav, side: initialSide, token: initialToken, toast, 
     }
   }
 
+  async function copyAddress() {
+    try {
+      await navigator.clipboard.writeText(asset.address);
+      haptic.success();
+      toast(`${asset.symbol} contract address copied.`);
+    } catch {
+      toast(asset.address);
+    }
+  }
+
   function pickToken(t: TokenRef, s?: Safety) {
     setPicking(false);
     setAsset(t);
@@ -192,6 +202,12 @@ export function Trade({ me, nav, side: initialSide, token: initialToken, toast, 
           {asset.symbol}
           <span style={{ transform: 'rotate(90deg)', display: 'flex', color: 'var(--graphite)' }}><Icon name="chevron" size={16} /></span>
         </button>
+        {!isCore(asset) && (
+          <button className="chip num" onClick={copyAddress} style={{ marginTop: 10, height: 26, fontSize: 12, padding: '0 10px', background: 'var(--paper-2)' }} aria-label={`Copy ${asset.symbol} contract address`}>
+            {asset.address.slice(0, 6)}…{asset.address.slice(-4)}
+            <Icon name="copy" size={13} />
+          </button>
+        )}
         <p className="muted" style={{ margin: '10px 0 0', fontSize: 13 }}>
           {verb} {asset.symbol} {side === 'buy' ? 'with' : 'for'} {counter.symbol}
           {safety && <> · <span style={{ color: VERDICT[safety.verdict].color, fontWeight: 600 }}>{VERDICT[safety.verdict].text}</span></>}

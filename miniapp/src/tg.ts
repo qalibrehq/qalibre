@@ -37,7 +37,8 @@ export function initTelegram() {
   tg.ready();
   tg.expand();
   applyTheme();
-  tg.onEvent?.('themeChanged', applyTheme);
+  tg.onEvent?.('themeChanged', () => applyTheme());
+  void syncThemePref();
   try {
     tg.disableVerticalSwipes?.();
   } catch {
@@ -46,8 +47,45 @@ export function initTelegram() {
 }
 
 /** Light or dark, from Telegram (or the system outside Telegram); the header bar matches the page. */
-export function applyTheme() {
-  const dark = tg?.colorScheme ? tg.colorScheme === 'dark' : window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+export type ThemePref = 'telegram' | 'light' | 'dark';
+const THEME_KEY = 'qalibre_theme';
+
+export function themePref(): ThemePref {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return v === 'light' || v === 'dark' ? v : 'telegram';
+  } catch {
+    return 'telegram';
+  }
+}
+
+/** Choose the look. 'telegram' follows Telegram's own setting, live. */
+export function setThemePref(p: ThemePref) {
+  try {
+    localStorage.setItem(THEME_KEY, p);
+  } catch {
+    /* private mode: still applies for this session */
+  }
+  void cloud.set(THEME_KEY, p).catch(() => undefined);
+  applyTheme(p);
+}
+
+/** On open: pick up a choice made on another device. */
+export async function syncThemePref() {
+  const v = await cloud.get(THEME_KEY).catch(() => null);
+  if ((v === 'light' || v === 'dark' || v === 'telegram') && v !== themePref()) {
+    try {
+      localStorage.setItem(THEME_KEY, v);
+    } catch {
+      /* ignore */
+    }
+    applyTheme(v);
+  }
+}
+
+export function applyTheme(pref: ThemePref = themePref()) {
+  const system = tg?.colorScheme ? tg.colorScheme === 'dark' : window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+  const dark = pref === 'dark' || (pref === 'telegram' && system);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   const bg = dark ? '#0F1012' : '#F6F4EF';
   try {

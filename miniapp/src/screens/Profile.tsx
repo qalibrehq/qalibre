@@ -1,5 +1,6 @@
 import { fromUnits, usd, type Me } from '../api';
-import { haptic, openChat, openLink } from '../tg';
+import { useState } from 'react';
+import { haptic, openChat, openLink, setThemePref, themePref, type ThemePref } from '../tg';
 import { Back } from '../ui/Brand';
 import { Icon } from '../ui/Icons';
 import { Avatar } from '../ui/Avatar';
@@ -19,6 +20,7 @@ export function Profile({ me, nav, toast }: { me: Me; nav: Nav; toast: (m: strin
   const name = me.firstName ?? 'Your profile';
   const short = me.account ? `${me.account.slice(0, 6)}…${me.account.slice(-4)}` : '';
   const inv = me.invite;
+  const [theme, setTheme] = useState<ThemePref>(themePref());
 
   async function copyWith(text: string, msg: string) {
     if (await copy(text)) {
@@ -87,7 +89,17 @@ export function Profile({ me, nav, toast }: { me: Me; nav: Nav; toast: (m: strin
         </div>
       )}
 
-      <div className="surface" style={{ marginTop: 14 }}>
+      <p className="section">Appearance</p>
+      <div role="radiogroup" aria-label="Appearance" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', padding: 4, gap: 4, borderRadius: 16, background: 'var(--paper-2)' }}>
+        {([['telegram', 'Auto'], ['light', 'Light'], ['dark', 'Dark']] as const).map(([k, label]) => (
+          <button key={k} role="radio" aria-checked={theme === k} onClick={() => { haptic.select(); setTheme(k); setThemePref(k); }} style={{ height: 38, border: 0, borderRadius: 12, background: theme === k ? 'var(--white)' : 'transparent', color: theme === k ? 'var(--ink)' : 'var(--graphite)', fontSize: 14, fontWeight: theme === k ? 600 : 500, cursor: 'pointer' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="muted" style={{ margin: '8px 4px 0', fontSize: 12 }}>Auto follows your Telegram theme.</p>
+
+      <div className="surface" style={{ marginTop: 18 }}>
         {([
           ['wallet', 'Wallet and security', 'Keys, trading permission, backups', () => nav('control')],
           ['limits', 'Trading limits', 'How much Qalibre may trade for you', () => nav('limits')],
