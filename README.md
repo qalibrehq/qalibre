@@ -5,8 +5,7 @@
 <p align="center">
   <a href="https://qalibre.app">Website</a> ·
   <a href="https://t.me/QalibreBot">Telegram</a> ·
-  <a href="https://qalibre.app/security">Security</a> ·
-  <a href="docs/AUDIT.md">Audit</a>
+  <a href="https://qalibre.app/security">Security</a>
 </p>
 
 Qalibre is a trading app for the QMS network that lives inside Telegram. Every token is test-traded before you can buy it, every trade is settled at the best price available and never below a direct swap, and your wallet is a smart account that only you can withdraw from.
@@ -39,7 +38,6 @@ Qalibre is a trading app for the QMS network that lives inside Telegram. Every t
 | [`backend/`](backend) | Telegram bot, Mini App API, token safety engine, sponsored owner actions, share cards. |
 | [`miniapp/`](miniapp) | Telegram Mini App (React): wallet, trading, token approvals, limits, activity. |
 | [`site/`](site) | Website, published to GitHub Pages. |
-| [`docs/`](docs) | [Security audit and open items](docs/AUDIT.md), [chat trading design](docs/CHAT_TRADING.md), [expansion plan](docs/EXPANSION.md). |
 
 ## Deployments
 
@@ -86,7 +84,7 @@ docker run -d --restart unless-stopped --env-file qalibre.env -v qalibre-data:/d
 
 ## Security
 
-Please report vulnerabilities privately to [security@qalibre.app](mailto:security@qalibre.app) or through a [security advisory](https://github.com/qalibrehq/qalibre/security/advisories/new), never in a public issue. The current audit status, including known open items, is kept in [`docs/AUDIT.md`](docs/AUDIT.md).
+Please report vulnerabilities privately to [security@qalibre.app](mailto:security@qalibre.app) or through a [security advisory](https://github.com/qalibrehq/qalibre/security/advisories/new), never in a public issue. Known limitations are listed on the [security page](https://qalibre.app/security#limits).
 
 Qalibre's safety checks reduce risk but cannot guarantee that a token is safe. Nothing in this repository is financial advice.
 

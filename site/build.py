@@ -75,7 +75,7 @@ def page(title: str, description: str, nav: str, body: str, slug: str) -> str:
     <div class="wrap foot-grid">
       <div class="foot-brand">{WORDMARK.format(w=96)}<p>Every trade, protected.</p></div>
       <div><b>Product</b><a href="https://t.me/QalibreBot">Open in Telegram</a><a href="/fees">Fees</a><a href="/roadmap">Roadmap</a><a href="/faq">FAQ</a></div>
-      <div><b>Trust</b><a href="/security">Security</a><a href="{GITHUB}">Source code</a><a href="{GITHUB}/blob/main/docs/AUDIT.md">Audit report</a></div>
+      <div><b>Trust</b><a href="/security">Security</a><a href="{GITHUB}">Source code</a><a href="/security#limits">Known limitations</a></div>
       <div><b>Legal</b><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/risk">Risk notice</a></div>
     </div>
     <div class="wrap foot-base"><span>© 2026 Qalibre · <a href="mailto:hello@qalibre.app">hello@qalibre.app</a></span><span>Not financial advice. Testnet only.</span></div>

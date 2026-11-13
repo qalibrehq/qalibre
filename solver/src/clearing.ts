@@ -53,7 +53,7 @@ export interface FeeConfig {
  * Default 0: with a single uniform price, a margin moves value from the exchange-facing side to the other side
  * whenever the book is nearly balanced (measured: 30 bps of margin moved the price by 0.3%), and the contract then
  * correctly rejects the batch as worse than direct. Pool movement is handled by fast re-planning instead.
- * The structural fix (contract splits actual exchange proceeds per side) is tracked for v3 in docs/AUDIT.md.
+ * The structural fix (contract splits actual exchange proceeds per side) is planned for v3.
  */
 export const DEFAULT_MARGIN_BPS = 0n;
 

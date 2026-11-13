@@ -15,7 +15,7 @@ Do not open a public issue, and give us reasonable time to fix the problem befor
 - The bot, API and token checks in [`backend/`](backend)
 - The Mini App in [`miniapp/`](miniapp)
 
-Known open items are listed in [`docs/AUDIT.md`](docs/AUDIT.md) and do not need to be reported again.
+Known limitations are listed on [qalibre.app/security](https://qalibre.app/security#limits) and do not need to be reported again.
 
 ## Status
 

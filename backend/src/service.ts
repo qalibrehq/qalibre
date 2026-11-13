@@ -61,7 +61,7 @@ function defaultSession(sessionKey: Address) {
     validUntil: now + 30 * 86400,
     anyBuyToken: false,
     limits: [
-      // Conservative until the external audit (docs/AUDIT.md 1.1). Owners can raise them.
+      // Conservative until the external audit. Owners can raise them.
       { token: TOKENS.WQMS, perTrade: 10n * 10n ** 18n, perDay: 50n * 10n ** 18n },
       { token: TOKENS.USDC, perTrade: 20n * 10n ** 6n, perDay: 100n * 10n ** 6n },
     ],

@@ -1,5 +1,5 @@
 /**
- * Token lookup and the safety check. See docs/CHAT_TRADING.md for the threat list this implements.
+ * Token lookup and the safety check.
  */
 import { getAddress, isAddress, parseAbi, type Address, type Hex } from 'viem';
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';

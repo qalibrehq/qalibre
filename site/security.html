@@ -61,7 +61,7 @@
         <article class="tile" style="--d:2"><b>An on-chain price floor</b><p>Before a trade settles, the settlement contract asks the exchange what a direct swap would pay. If your fill is lower, the whole batch is refused. No server, including ours, can override it.</p></article>
         <article class="tile" style="--d:3"><b>A real safety check</b><p>Tokens are test-bought and test-sold on the live chain without spending anything, and their code is scanned for minting, pausing, blacklists and upgradeability. It runs again at the moment you buy.</p></article>
         <article class="tile" style="--d:4"><b>Slow changes, fast exits</b><p>Adding a trading venue or raising a fee waits 48 hours and is public on-chain before it applies. Removing a venue or lowering a fee takes effect at once.</p></article>
-        <article class="tile" style="--d:5"><b>Honest limits</b><p>A safety check reduces risk; it cannot promise a token is good. We are on testnet until an external audit is complete. Both are said plainly, everywhere.</p></article>
+        <article class="tile" style="--d:5"><b>Every trade on the record</b><p>Each receipt shows what a direct swap would have paid next to what you got, and both are on-chain. You never have to take our word for the price.</p></article>
       </div>
     </section>
 
@@ -70,7 +70,7 @@
         <div>
           <p class="eyebrow">Verified contracts</p>
           <h2 class="rv"><span>Read the code</span><span>that holds the rules.</span></h2>
-          <p class="body">Each contract below is verified on the QMS Explorer, so its source matches what runs. The full code, tests and our internal audit, including what is still open, are public on GitHub.</p>
+          <p class="body">Each contract below is verified on the QMS Explorer, so its source matches what runs. The full code and tests are public on GitHub.</p>
         </div>
         <ul class="contracts" data-reveal>
           <li><span>Settlement</span><a href="https://testnet.qmsscan.io/address/0x88126dec9c886AEE446F1eB7c15524e6BCbb19F4">0x8812…19F4</a></li>
@@ -79,6 +79,21 @@
           <li><span>Exchange adapter</span><a href="https://testnet.qmsscan.io/address/0xDfAf7FA80a5f31190d2Ea5A76a4F90b3d119b414">0xDfAf…b414</a></li>
           <li><span>Gas sponsor</span><a href="https://testnet.qmsscan.io/address/0xd8f6886D35B541891F96ea79e45e4BbD87050f8C">0xd8f6…0f8C</a></li>
         </ul>
+      </div>
+    </section>
+
+    <section class="section" id="limits">
+      <div class="wrap">
+        <p class="eyebrow">Known limitations</p>
+        <h2 class="rv"><span>What is not finished yet,</span><span>said up front.</span></h2>
+        <div class="grid-3" data-reveal style="margin-top: 40px">
+          <article class="tile" style="--d:0"><b>No external audit yet</b><p>That is why Qalibre runs on testnet, where tokens have no value. Mainnet waits for an independent audit, published in full.</p></article>
+          <article class="tile" style="--d:1"><b>One admin key</b><p>Governance changes wait 48 hours in public, and the admin key cannot move user funds. It moves to a multisig with hardware keys before mainnet.</p></article>
+          <article class="tile" style="--d:2"><b>A six-digit PIN</b><p>Your PIN protects the key stored in your Telegram account. Keep Telegram’s two-step verification on and back up your key. Passkeys are planned.</p></article>
+          <article class="tile" style="--d:3"><b>A live price floor</b><p>The floor compares every fill with the pool’s price at settlement. A time-averaged bound is added before mainnet, so one block cannot shift it.</p></article>
+          <article class="tile" style="--d:4"><b>One server</b><p>If our server is down, trading pauses. Your funds stay in your wallet, and your key can withdraw them without us.</p></article>
+          <article class="tile" style="--d:5"><b>Limits start low</b><p>Default trading limits are small until the audit is done. You can change them, or turn trading off, at any time.</p></article>
+        </div>
       </div>
     </section>
 
@@ -95,7 +110,7 @@
     <div class="wrap foot-grid">
       <div class="foot-brand"><svg viewBox="0 -6 257 88" width="96" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="8"><circle cx="24" cy="40" r="16"/><path d="M40 24 V78"/><circle cx="73" cy="40" r="16"/><path d="M89 24 V60"/><path d="M106 4 V60"/><path d="M123 24 V60"/><path d="M140 4 V60"/><circle cx="156" cy="40" r="16"/><path d="M189 24 V60 M189 42 A16 16 0 0 1 205 26"/><path d="M215 40 H247 M247 40 A16 16 0 1 0 242.3 51.3"/></g><circle cx="123" cy="10" r="5.6" fill="#B08D57"/><circle cx="123" cy="10" r="1.9" fill="var(--paper)"/></svg><p>Every trade, protected.</p></div>
       <div><b>Product</b><a href="https://t.me/QalibreBot">Open in Telegram</a><a href="/fees">Fees</a><a href="/roadmap">Roadmap</a><a href="/faq">FAQ</a></div>
-      <div><b>Trust</b><a href="/security">Security</a><a href="https://github.com/qalibrehq/qalibre">Source code</a><a href="https://github.com/qalibrehq/qalibre/blob/main/docs/AUDIT.md">Audit report</a></div>
+      <div><b>Trust</b><a href="/security">Security</a><a href="https://github.com/qalibrehq/qalibre">Source code</a><a href="/security#limits">Known limitations</a></div>
       <div><b>Legal</b><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/risk">Risk notice</a></div>
     </div>
     <div class="wrap foot-base"><span>© 2026 Qalibre · <a href="mailto:hello@qalibre.app">hello@qalibre.app</a></span><span>Not financial advice. Testnet only.</span></div>

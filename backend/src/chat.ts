@@ -1,7 +1,7 @@
 /**
  * Chat trading: paste a token address (or /buy), get a card with the safety check, trade with one tap.
  *
- * Every rule here is from docs/CHAT_TRADING.md. In short:
+ * The rules, in short:
  *  - Button data is an opaque card id plus a fixed operation code. Amounts and addresses never travel
  *    in button data; they are looked up or recomputed on the server at the moment of the press.
  *  - Trades happen only in the private chat. Groups and inline results show read-only cards that link here.
