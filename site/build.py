@@ -10,7 +10,7 @@ import re
 
 ROOT = pathlib.Path(__file__).parent
 SRC = ROOT / 'src'
-GITHUB = 'https://github.com/'  # set to the organization repository once it exists
+GITHUB = 'https://github.com/qalibrehq/qalibre'
 
 WORDMARK = '''<svg viewBox="0 -6 257 88" width="{w}" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="8"><circle cx="24" cy="40" r="16"/><path d="M40 24 V78"/><circle cx="73" cy="40" r="16"/><path d="M89 24 V60"/><path d="M106 4 V60"/><path d="M123 24 V60"/><path d="M140 4 V60"/><circle cx="156" cy="40" r="16"/><path d="M189 24 V60 M189 42 A16 16 0 0 1 205 26"/><path d="M215 40 H247 M247 40 A16 16 0 1 0 242.3 51.3"/></g><circle cx="123" cy="10" r="5.6" fill="#B08D57"/><circle cx="123" cy="10" r="1.9" fill="var(--paper)"/></svg>'''
 
@@ -66,7 +66,7 @@ def page(title: str, description: str, nav: str, body: str) -> str:
     <div class="wrap foot-grid">
       <div class="foot-brand">{WORDMARK.format(w=96)}<p>Every trade, protected.</p></div>
       <div><b>Product</b><a href="https://t.me/QalibreBot">Open in Telegram</a><a href="fees.html">Fees</a><a href="roadmap.html">Roadmap</a><a href="faq.html">FAQ</a></div>
-      <div><b>Trust</b><a href="security.html">Security</a><a href="{GITHUB}">Source code</a><a href="{GITHUB}">Audit report</a></div>
+      <div><b>Trust</b><a href="security.html">Security</a><a href="{GITHUB}">Source code</a><a href="{GITHUB}/blob/main/docs/AUDIT.md">Audit report</a></div>
       <div><b>Legal</b><a href="terms.html">Terms</a><a href="privacy.html">Privacy</a><a href="risk.html">Risk notice</a></div>
     </div>
     <div class="wrap foot-base"><span>© 2026 Qalibre</span><span>Not financial advice. Testnet only.</span></div>
