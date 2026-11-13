@@ -232,7 +232,7 @@ h3 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.08; letter-spa
 }
 
 /* Wallet picker */
-.rc-modal { width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 22px; border: 0; border-radius: 24px; background: var(--white); color: var(--ink); box-shadow: 0 40px 80px -30px rgba(17, 18, 20, 0.45); }
+.rc-modal { width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 22px; border: 0; overflow: hidden; flex-direction: column; border-radius: 24px; background: var(--white); color: var(--ink); box-shadow: 0 40px 80px -30px rgba(17, 18, 20, 0.45); }
 .rc-modal[open] { animation: rc-in 0.28s var(--ease) both; }
 .rc-modal::backdrop { background: rgba(17, 18, 20, 0.42); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 @keyframes rc-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
@@ -242,13 +242,20 @@ h3 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.08; letter-spa
 .rc-x:hover { color: var(--ink); }
 .rc-modal-sub { margin: 6px 0 18px; color: var(--graphite); font-size: 14px; line-height: 1.5; }
 .rc-modal-label { margin: 4px 0 10px; font-size: 13px; font-weight: 600; color: var(--graphite); }
-.rc-wlist { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; }
-.rc-wallet { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--paper-2); background: var(--white); color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; text-align: left; text-decoration: none; cursor: pointer; transition: border-color 0.2s, background 0.2s, transform 0.15s var(--ease); }
+.rc-modal[open] { display: flex; }
+.rc-modal > [data-el="get"] { display: flex; flex-direction: column; min-height: 0; }
+.rc-modal-head { flex: none; }
+.rc-wlist { list-style: none; margin: 0 0 8px; padding: 2px; display: grid; gap: 6px; }
+/* The header stays put; only the wallet list scrolls, inside the card, with a slim scrollbar. */
+.rc-modal > .rc-wlist, .rc-modal > [data-el="get"] > .rc-wlist { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--paper-2) transparent; }
+.rc-wlist::-webkit-scrollbar { width: 6px; }
+.rc-wlist::-webkit-scrollbar-thumb { background: var(--paper-2); border-radius: 3px; }
+.rc-wallet { display: flex; align-items: center; gap: 14px; width: 100%; padding: 9px 12px; border-radius: 16px; border: 1px solid var(--paper-2); background: var(--white); color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; text-align: left; text-decoration: none; cursor: pointer; transition: border-color 0.2s, background 0.2s, transform 0.15s var(--ease); }
 .rc-wallet:hover { border-color: rgba(15, 77, 58, 0.35); background: #fbfaf7; }
 .rc-wallet:active { transform: scale(0.99); }
 .rc-wallet:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-.rc-wicon { width: 40px; height: 40px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; flex: none; overflow: hidden; }
-.rc-wicon img { width: 32px; height: 32px; object-fit: contain; }
+.rc-wicon { width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; flex: none; overflow: hidden; }
+.rc-wicon img { width: 30px; height: 30px; object-fit: contain; border-radius: 8px; }
 .rc-wicon.plain { background: var(--paper); color: var(--graphite); }
 .rc-wname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rc-wend { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--graphite); flex: none; }

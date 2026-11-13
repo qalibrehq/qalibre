@@ -90,7 +90,15 @@
       ];
   const found = new Map();
   // Only inline image data from the wallet itself; never a remote URL.
-  const safeIcon = (src) => (typeof src === 'string' && /^data:image\/(svg\+xml|png|webp|jpeg|gif)[;,]/i.test(src) ? src : null);
+  // Wallets are not always tidy: Phantom pads its icon with a newline, Magic Eden labels a PNG as
+  // "image/png+xml". Normalize, then accept only inline image data, never a remote URL.
+  const safeIcon = (src) => {
+    const s = (typeof src === 'string' ? src.trim() : '').replace(/^data:image\/(png|jpe?g|webp|gif)\+xml/i, 'data:image/$1');
+    return /^data:image\/(svg\+xml|png|webp|jpe?g|gif)[;,]/i.test(s) ? s : null;
+  };
+  // Most-used EVM wallets first; anything else keeps the order it announced in.
+  const RANK = ['io.metamask', 'io.rabby', 'com.coinbase.wallet', 'com.okex.wallet', 'com.trustwallet.app', 'io.zerion.wallet', 'me.rainbow'];
+  const rank = (w) => { const i = RANK.indexOf(w.info.rdns); return i < 0 ? RANK.length : i; };
 
   function walletItem({ name, icon, tag, onClick, href, action }) {
     const li = document.createElement('li');
@@ -115,7 +123,7 @@
   function renderPicker() {
     const list = $('wlist');
     list.innerHTML = '';
-    const wallets = [...found.values()];
+    const wallets = [...found.values()].map((w, i) => ({ w, i })).sort((a, b) => rank(a.w) - rank(b.w) || a.i - b.i).map((x) => x.w);
     if (!wallets.length && window.ethereum) wallets.push({ info: { name: 'Browser wallet', uuid: 'injected' }, provider: window.ethereum });
     for (const w of wallets) {
       list.appendChild(walletItem({ name: String(w.info.name || 'Wallet').slice(0, 32), icon: safeIcon(w.info.icon), tag: 'Detected', onClick: () => { $('modal').close(); connect(w.provider); } }));
@@ -131,7 +139,8 @@
   function discover() {
     window.addEventListener('eip6963:announceProvider', (e) => {
       const d = e.detail;
-      if (d?.provider && d?.info?.uuid) { found.set(d.info.uuid, d); renderPicker(); }
+      // Keyed by rdns as well, because some wallets (Backpack) announce twice with different ids.
+      if (d?.provider && d?.info?.uuid) { found.set(d.info.rdns || d.info.uuid, d); renderPicker(); }
     });
     window.dispatchEvent(new Event('eip6963:requestProvider'));
     renderPicker();
