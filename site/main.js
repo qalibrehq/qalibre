@@ -75,7 +75,9 @@
 
     function frame() {
       ctx.clearRect(0, 0, W, H);
-      const target = mobile() ? 30 : 64;
+      // Desktop: as many orders as the open space beside the phone can hold; a thin strip gets none, never a smudge.
+      const room = W - fx;
+      const target = mobile() ? 30 : room < 160 ? 0 : Math.min(64, Math.round(room / 7));
       if (parts.length < target && Math.random() < 0.5) spawn();
 
       for (let i = parts.length - 1; i >= 0; i--) {

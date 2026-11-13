@@ -207,6 +207,12 @@ h2 { margin: 0; font-size: clamp(32px, 4.2vw, 52px); line-height: 1.04; letter-s
 .armed .bars[data-reveal].in i { width: var(--w); }
 .armed .bars[data-reveal].in div:nth-child(2) i { transition-delay: 0.5s; }
 
+/* Wide screens: the first screen is the whole pitch, so headline, buttons and phone must fit the window's height, not just its width. */
+@media (min-width: 881px) {
+  .hero { padding: clamp(20px, 5vh, 72px) 0 clamp(40px, 7vh, 96px); }
+  .hero h1 { font-size: clamp(46px, min(6.6vw, 11vh), 86px); }
+}
+
 /* Small screens */
 @media (max-width: 880px) {
   .links { display: none; }

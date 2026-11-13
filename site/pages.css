@@ -177,3 +177,6 @@ h3 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.08; letter-spa
 @keyframes tap { 40% { transform: scale(0.92); } 100% { transform: none; } }
 .done b { color: var(--green); }
 @media (max-width: 880px) { .stage { width: min(320px, 88vw); } .stage .phone { width: 100%; } .halo i { width: 300px; height: 300px; margin: -150px 0 0 -150px; } }
+
+/* Wide screens: the phone is sized by the window's height too, so it never runs off the first screen. */
+@media (min-width: 881px) { .hero .stage { width: clamp(250px, calc((100svh - 150px) * 9 / 17), 360px); } }
