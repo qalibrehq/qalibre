@@ -15,8 +15,7 @@
               <div class="rc-head"><span class="rc-num">1</span><b>Connect the owner account</b></div>
               <div class="rc-body">
                 <p class="rc-text" data-el="connect-text">Use MetaMask, Rabby or any wallet where you imported the key you backed up in Qalibre.</p>
-                <div class="rc-wallets" data-el="wallets"></div>
-                <p class="rc-note" data-el="no-wallet" hidden>No wallet found in this browser. On a phone, open this page inside your wallet app’s browser: <a href="https://metamask.app.link/dapp/qalibre.app/recover">open in MetaMask</a>.</p>
+                <button class="btn" type="button" data-el="open">Connect wallet</button>
                 <div class="rc-row" data-el="account" hidden><span>Owner account</span><code data-el="account-addr"></code></div>
                 <button class="btn" type="button" data-el="switch" hidden>Switch to QMS testnet</button>
               </div>
@@ -57,4 +56,17 @@
         </aside>
       </div>
     </section>
+    <dialog class="rc-modal" data-el="modal" aria-labelledby="rc-modal-title">
+      <div class="rc-modal-head">
+        <b id="rc-modal-title">Connect a wallet</b>
+        <button type="button" class="rc-x" data-el="close" aria-label="Close"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+      </div>
+      <p class="rc-modal-sub">Choose the wallet that holds your Qalibre owner key.</p>
+      <ul class="rc-wlist" data-el="wlist"></ul>
+      <div data-el="get" hidden>
+        <p class="rc-modal-label" data-el="get-label">No wallet found in this browser</p>
+        <ul class="rc-wlist" data-el="getlist"></ul>
+      </div>
+      <p class="rc-modal-foot">Connecting shares only your account address. Your key never leaves your wallet.</p>
+    </dialog>
     <script src="/recover.js" defer></script>

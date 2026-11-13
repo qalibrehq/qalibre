@@ -230,3 +230,32 @@ h3 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.08; letter-spa
   .rc-side { order: -1; }
   .rc-body { padding-left: 0; }
 }
+
+/* Wallet picker */
+.rc-modal { width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 22px; border: 0; border-radius: 24px; background: var(--white); color: var(--ink); box-shadow: 0 40px 80px -30px rgba(17, 18, 20, 0.45); }
+.rc-modal[open] { animation: rc-in 0.28s var(--ease) both; }
+.rc-modal::backdrop { background: rgba(17, 18, 20, 0.42); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+@keyframes rc-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
+.rc-modal [hidden] { display: none !important; }
+.rc-modal-head { display: flex; align-items: center; justify-content: space-between; font-size: 18px; }
+.rc-x { width: 36px; height: 36px; border-radius: 18px; border: 0; background: var(--paper); color: var(--graphite); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.rc-x:hover { color: var(--ink); }
+.rc-modal-sub { margin: 6px 0 18px; color: var(--graphite); font-size: 14px; line-height: 1.5; }
+.rc-modal-label { margin: 4px 0 10px; font-size: 13px; font-weight: 600; color: var(--graphite); }
+.rc-wlist { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; }
+.rc-wallet { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--paper-2); background: var(--white); color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; text-align: left; text-decoration: none; cursor: pointer; transition: border-color 0.2s, background 0.2s, transform 0.15s var(--ease); }
+.rc-wallet:hover { border-color: rgba(15, 77, 58, 0.35); background: #fbfaf7; }
+.rc-wallet:active { transform: scale(0.99); }
+.rc-wallet:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.rc-wicon { width: 40px; height: 40px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; flex: none; overflow: hidden; }
+.rc-wicon img { width: 32px; height: 32px; object-fit: contain; }
+.rc-wicon.plain { background: var(--paper); color: var(--graphite); }
+.rc-wname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-wend { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--graphite); flex: none; }
+button.rc-wallet .rc-wend { color: var(--green); background: rgba(15, 77, 58, 0.08); padding: 4px 9px; border-radius: 999px; }
+.rc-modal-foot { margin: 14px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+@media (max-width: 520px) {
+  .rc-modal { width: 100vw; max-width: 100vw; margin: auto 0 0; border-radius: 24px 24px 0 0; padding-bottom: max(22px, env(safe-area-inset-bottom)); }
+  .rc-modal[open] { animation-name: rc-up; }
+}
+@keyframes rc-up { from { transform: translateY(100%); } }

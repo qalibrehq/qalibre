@@ -70,30 +70,79 @@
   const rpc = (method, params = []) => state.provider.request({ method, params });
   const call = (to, data) => rpc('eth_call', [{ to, data }, 'latest']);
 
+  // ---------- wallet picker ----------
+  // Installed wallets announce themselves (EIP-6963) with their own name and official icon, so the
+  // picker shows real logos without loading anything from elsewhere.
+  const GLYPH = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 9.5h18M16 14h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  const ARROW = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const here = encodeURIComponent('https://qalibre.app/recover');
+  const SUGGEST = mobile
+    ? [
+        { name: 'MetaMask', href: 'https://metamask.app.link/dapp/qalibre.app/recover', action: 'Open in app' },
+        { name: 'Trust Wallet', href: `https://link.trustwallet.com/open_url?coin_id=60&url=${here}`, action: 'Open in app' },
+        { name: 'Coinbase Wallet', href: `https://go.cb-w.com/dapp?cb_url=${here}`, action: 'Open in app' },
+      ]
+    : [
+        { name: 'MetaMask', href: 'https://metamask.io/download/', action: 'Install' },
+        { name: 'Rabby', href: 'https://rabby.io/', action: 'Install' },
+        { name: 'Coinbase Wallet', href: 'https://www.coinbase.com/wallet/downloads', action: 'Install' },
+      ];
+  const found = new Map();
+  // Only inline image data from the wallet itself; never a remote URL.
+  const safeIcon = (src) => (typeof src === 'string' && /^data:image\/(svg\+xml|png|webp|jpeg|gif)[;,]/i.test(src) ? src : null);
+
+  function walletItem({ name, icon, tag, onClick, href, action }) {
+    const li = document.createElement('li');
+    const el = document.createElement(href ? 'a' : 'button');
+    el.className = 'rc-wallet';
+    if (href) { el.href = href; el.target = '_blank'; el.rel = 'noopener'; } else { el.type = 'button'; el.addEventListener('click', onClick); }
+    const ic = document.createElement('span');
+    ic.className = 'rc-wicon' + (icon ? '' : ' plain');
+    if (icon) { const img = document.createElement('img'); img.src = icon; img.alt = ''; img.width = 32; img.height = 32; ic.appendChild(img); } else ic.innerHTML = GLYPH;
+    const nm = document.createElement('span');
+    nm.className = 'rc-wname';
+    nm.textContent = name;
+    const end = document.createElement('span');
+    end.className = 'rc-wend';
+    if (tag) end.textContent = tag;
+    else { end.textContent = action + ' '; end.insertAdjacentHTML('beforeend', ARROW); }
+    el.append(ic, nm, end);
+    li.appendChild(el);
+    return li;
+  }
+
+  function renderPicker() {
+    const list = $('wlist');
+    list.innerHTML = '';
+    const wallets = [...found.values()];
+    if (!wallets.length && window.ethereum) wallets.push({ info: { name: 'Browser wallet', uuid: 'injected' }, provider: window.ethereum });
+    for (const w of wallets) {
+      list.appendChild(walletItem({ name: String(w.info.name || 'Wallet').slice(0, 32), icon: safeIcon(w.info.icon), tag: 'Detected', onClick: () => { $('modal').close(); connect(w.provider); } }));
+    }
+    list.hidden = !wallets.length;
+    $('get').hidden = wallets.length > 0;
+    $('get-label').textContent = mobile ? 'Open this page in your wallet app' : 'No wallet found in this browser';
+    const get = $('getlist');
+    get.innerHTML = '';
+    for (const s of SUGGEST) get.appendChild(walletItem(s));
+  }
+
   function discover() {
-    const found = new Map();
-    const render = () => {
-      const box = $('wallets');
-      box.innerHTML = '';
-      const list = [...found.values()];
-      if (!list.length && window.ethereum) list.push({ info: { name: 'Browser wallet', uuid: 'injected' }, provider: window.ethereum });
-      $('no-wallet').hidden = list.length > 0;
-      for (const w of list) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'btn';
-        b.textContent = list.length > 1 ? `Connect ${w.info.name}` : 'Connect wallet';
-        b.addEventListener('click', () => connect(w.provider));
-        box.appendChild(b);
-      }
-    };
     window.addEventListener('eip6963:announceProvider', (e) => {
       const d = e.detail;
-      if (d?.provider && d?.info?.uuid) { found.set(d.info.uuid, d); render(); }
+      if (d?.provider && d?.info?.uuid) { found.set(d.info.uuid, d); renderPicker(); }
     });
     window.dispatchEvent(new Event('eip6963:requestProvider'));
-    setTimeout(render, 400);
-    render();
+    renderPicker();
+    $('open').addEventListener('click', () => {
+      window.dispatchEvent(new Event('eip6963:requestProvider'));
+      renderPicker();
+      $('modal').showModal();
+    });
+    $('close').addEventListener('click', () => $('modal').close());
+    // A click on the dimmed backdrop closes the picker.
+    $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) $('modal').close(); });
   }
 
   async function connect(provider) {
@@ -129,7 +178,7 @@
 
   async function afterConnect() {
     if (!state.account) { mark('connect', ''); return; }
-    $('wallets').hidden = true;
+    $('open').hidden = true;
     $('account').hidden = false;
     $('account-addr').textContent = short(state.account.toLowerCase());
     $('account-addr').title = state.account;
