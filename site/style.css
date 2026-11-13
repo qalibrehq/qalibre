@@ -70,7 +70,7 @@ h2 { margin: 0; font-size: clamp(32px, 4.2vw, 52px); line-height: 1.04; letter-s
 .facts dd { margin: 4px 0 0; font-size: 14px; color: var(--graphite); line-height: 1.45; }
 
 /* The phone: a Telegram chat that plays the product, start to finish, every 11 seconds. */
-.phone { justify-self: center; width: min(360px, 100%); aspect-ratio: 9 / 18.4; border-radius: 46px; background: var(--ink); padding: 11px; box-shadow: 0 40px 80px -36px rgba(15, 77, 58, 0.45), 0 18px 36px -24px rgba(17, 18, 20, 0.5); }
+.phone { justify-self: center; width: min(360px, 100%); aspect-ratio: 9 / 17; border-radius: 46px; background: var(--ink); padding: 11px; box-shadow: 0 40px 80px -36px rgba(15, 77, 58, 0.45), 0 18px 36px -24px rgba(17, 18, 20, 0.5); }
 .phone-top { height: 64px; border-radius: 36px 36px 0 0; background: #fbfaf7; display: flex; align-items: center; gap: 10px; padding: 0 20px; font-size: 14px; }
 .phone-top small { display: block; color: var(--muted); font-size: 12px; }
 .avatar { width: 34px; height: 34px; border-radius: 17px; background: var(--green) url('assets/icon-512.png') center / cover; }

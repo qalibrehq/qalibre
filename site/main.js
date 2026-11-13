@@ -41,15 +41,23 @@
       W = r.width; H = r.height;
       canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      // The meeting point sits just left of the phone on wide screens, low and centred on phones.
-      fx = mobile() ? W * 0.5 : W * 0.6;
-      fy = mobile() ? H * 0.9 : H * 0.56;
+      // Orders stream into the phone: its left edge on wide screens, its top on phones.
+      const ph = document.querySelector('.hero .phone');
+      const hr = canvas.getBoundingClientRect();
+      if (ph) {
+        const pr = ph.getBoundingClientRect();
+        // Desktop: orders arrive from the open space on the right, into the phone's right edge.
+        fx = mobile() ? pr.left - hr.left + pr.width / 2 : pr.right - hr.left - 6;
+        fy = mobile() ? pr.top - hr.top + 6 : pr.top - hr.top + pr.height * 0.5;
+      } else { fx = W * 0.6; fy = H * 0.56; }
     }
 
     function spawn() {
       const fromTop = Math.random();
       parts.push({
-        y0: H * (0.08 + fromTop * 0.84),
+        // Desktop: from the right edge. Phone: from both sides toward the phone's top.
+        side: mobile() ? (Math.random() < 0.5 ? -1 : 1) : 1,
+        y0: mobile() ? H * (0.45 + fromTop * 0.25) : H * (0.06 + fromTop * 0.88),
         t: 0,
         v: 0.0028 + Math.random() * 0.0034,
         sell: Math.random() < 0.5,
@@ -59,15 +67,15 @@
 
     // Cubic curve from the left edge into the meeting point.
     function point(p) {
-      const t = p.t, x0 = -20, y0 = p.y0, x3 = fx, y3 = fy;
-      const x1 = W * p.bend, y1 = y0, x2 = fx - W * 0.12, y2 = y3;
+      const t = p.t, x0 = p.side > 0 ? W + 20 : -20, y0 = p.y0, x3 = fx, y3 = fy;
+      const x1 = x0 + (x3 - x0) * p.bend, y1 = y0, x2 = x3 + (x0 - x3) * 0.18, y2 = y3;
       const u = 1 - t;
       return [u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3, u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3];
     }
 
     function frame() {
       ctx.clearRect(0, 0, W, H);
-      const target = mobile() ? 26 : 54;
+      const target = mobile() ? 30 : 64;
       if (parts.length < target && Math.random() < 0.5) spawn();
 
       for (let i = parts.length - 1; i >= 0; i--) {
@@ -86,18 +94,17 @@
         p.t += p.v;
         const [x, y] = point(p);
         const near = Math.max(0, p.t - 0.7) * 3.3;
-        const a = (p.sell ? 0.24 : 0.3) + near * 0.5;
+        const a = (p.sell ? 0.34 : 0.42) + near * 0.5;
         const col = p.sell ? '17,18,20' : '15,77,58';
         // A short trail shows direction: every order is moving toward the same fair price.
         ctx.strokeStyle = `rgba(${col},${a * 0.45})`;
         ctx.lineWidth = 1.6;
         ctx.beginPath(); ctx.moveTo(px - (x - px) * 5, py - (y - py) * 5); ctx.lineTo(x, y); ctx.stroke();
         ctx.fillStyle = `rgba(${col},${a})`;
-        ctx.beginPath(); ctx.arc(x, y, 2.4, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, 2.8, 0, Math.PI * 2); ctx.fill();
         if (p.t >= 1) {
           // Matched (most orders) flash brass and settle; the rest continue to QWAP.
-          if (Math.random() < 0.72) { flashes.push({ r: 4, a: 0.7 }); parts.splice(i, 1); }
-          else p.out = 0;
+          flashes.push({ r: 3, a: 0.55 }); parts.splice(i, 1);
         }
       }
 
@@ -109,12 +116,6 @@
         ctx.beginPath(); ctx.arc(fx, fy, f.r, 0, Math.PI * 2); ctx.stroke();
         if (f.a < 0.03) flashes.splice(i, 1);
       }
-
-      // The ring itself: brass, with the paper hole, like the brand mark.
-      ctx.fillStyle = '#B08D57';
-      ctx.beginPath(); ctx.arc(fx, fy, 7, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#F6F4EF';
-      ctx.beginPath(); ctx.arc(fx, fy, 2.6, 0, Math.PI * 2); ctx.fill();
 
       if (running) raf = requestAnimationFrame(frame);
     }
@@ -136,6 +137,8 @@
 
     resize();
     window.addEventListener('resize', () => { resize(); if (!canAnimate) staticFrame(); });
+    // Fonts and images change the layout after first paint: re-aim at the phone once everything has loaded.
+    window.addEventListener('load', () => { resize(); if (!canAnimate) staticFrame(); });
     if (!canAnimate) staticFrame();
     else {
       // Only run while the hero is on screen and the tab is visible: no wasted battery.
@@ -144,6 +147,62 @@
       new IntersectionObserver((es) => (es[0].isIntersecting ? start() : stop())).observe(canvas);
       document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));
     }
+  }
+
+  // ---------- The living chat: a scam stopped, then a trade made. Never empty. ----------
+  const feed = document.querySelector('.hero .feed');
+  const halo = document.querySelector('.hero .halo');
+  if (feed && canAnimate) {
+    // Earlier messages stay at the top, like a real chat; the scripted part plays below them.
+    const history = [...feed.querySelectorAll('.history')].map((n) => n.cloneNode(true));
+    const tpl = [...feed.children].filter((n) => !n.classList.contains('history')).map((n) => n.cloneNode(true));
+    const typing = () => {
+      const t = document.createElement('div');
+      t.className = 'msg in typing enter';
+      t.innerHTML = '<i></i><i></i><i></i><span>Simulating a buy and a sale</span>';
+      return t;
+    };
+    const pulse = (kind) => {
+      if (!halo) return;
+      halo.className = 'halo';
+      void halo.offsetWidth; // restart the animation
+      halo.className = `halo go ${kind}`;
+    };
+    const add = (node) => { node.classList.add('enter'); feed.appendChild(node); return node; };
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const play = async () => {
+      for (;;) {
+        feed.classList.remove('leave');
+        feed.replaceChildren(...history.map((n) => n.cloneNode(true)), tpl[0].cloneNode(true));
+        await wait(900);
+        add(tpl[1].cloneNode(true));                 // a token is pasted
+        await wait(700);
+        let t = add(typing());                        // the check runs
+        await wait(1500);
+        t.remove();
+        add(tpl[2].cloneNode(true));                  // honeypot: stopped
+        pulse('bad');
+        await wait(2600);
+        add(tpl[3].cloneNode(true));                  // a real token
+        await wait(700);
+        t = add(typing());
+        await wait(1500);
+        t.remove();
+        const card = add(tpl[4].cloneNode(true));     // checked: tradable
+        const btn = card.querySelector('.on');
+        btn?.classList.remove('on');
+        pulse('good');
+        await wait(1500);
+        btn?.classList.add('on', 'tap');              // one tap
+        await wait(700);
+        add(tpl[5].cloneNode(true));                  // done
+        pulse('good');
+        await wait(3400);
+        feed.classList.add('leave');
+        await wait(650);
+      }
+    };
+    play();
   }
 
   // ---------- The QUBO grid: interaction strengths, then the chosen orders light up. ----------

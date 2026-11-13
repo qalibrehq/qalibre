@@ -4,10 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Qalibre · Every trade, protected</title>
-  <meta name="description" content="Qalibre checks every token before you buy, settles every trade at QWAP's price or better, and never holds your keys. Built on QMS, inside Telegram." />
+  <meta name="description" content="Qalibre checks every token before you buy, gets you the best price available, and never holds your keys. Built on QMS, inside Telegram." />
   <meta name="theme-color" content="#F6F4EF" />
   <meta property="og:title" content="Qalibre · Every trade, protected" />
-  <meta property="og:description" content="Qalibre checks every token before you buy, settles every trade at QWAP's price or better, and never holds your keys. Built on QMS, inside Telegram." />
+  <meta property="og:description" content="Qalibre checks every token before you buy, gets you the best price available, and never holds your keys. Built on QMS, inside Telegram." />
   <meta property="og:image" content="assets/fill.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="icon" href="assets/icon-512.png" />
@@ -48,23 +48,30 @@
         <div class="hero-copy">
           <p class="eyebrow"><span class="ring" aria-hidden="true"></span>Live on QMS testnet</p>
           <h1 class="rv"><span>Every trade,</span><span class="g">protected.</span></h1>
-          <p class="lede">Qalibre checks every token before you buy, settles every trade at QWAP’s price or better, and never holds your keys. All inside Telegram.</p>
+          <p class="lede">Qalibre checks every token before you buy, gets you the best price available, and never holds your keys. All inside Telegram.</p>
           <div class="cta">
             <a class="btn" href="https://t.me/QalibreBot">Start trading</a>
             <a class="btn btn-quiet" href="security.html">How we keep you safe</a>
           </div>
         </div>
 
-        <div class="phone" role="img" aria-label="Qalibre in a Telegram chat: a token is pasted, checked, shown with its safety score and bought in one tap">
-          <div class="phone-top"><span class="avatar" aria-hidden="true"></span><span><b>Qalibre</b><small>bot</small></span></div>
-          <div class="chat">
-            <div class="msg out s1"><code>0xb3b3…3763</code></div>
-            <div class="msg in typing s2"><i></i><i></i><i></i><span>Simulating a buy and a sale</span></div>
-            <div class="msg in card s3">
-              <img src="assets/chat-QTDOG.png" alt="" width="1200" height="675" />
-              <div class="buttons"><span>Buy 0.01 QMS</span><span class="press">Buy 0.05 QMS</span></div>
+        <div class="stage">
+          <div class="halo" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="phone" role="img" aria-label="Qalibre in a Telegram chat: a honeypot token is stopped with no Buy button, then a real token is checked and bought in one tap">
+            <div class="phone-top"><span class="avatar" aria-hidden="true"></span><span><b>Qalibre</b><small>bot</small></span></div>
+            <div class="chat">
+              <!-- Without JavaScript (or with reduced motion) the finished conversation shows, still. -->
+              <div class="feed">
+                <div class="msg in history"><b>Wallet</b> 1.25 QMS · 12.40 USDC · 1 token</div>
+                <div class="msg in done history"><b>Done. +0.0099 QMS</b><span>Sold QTDOG. Never less than a direct swap.</span></div>
+                <div class="msg in"><b>Paste any token.</b> I’ll test-trade it before you risk a thing.</div>
+                <div class="msg out"><code>0xB029…9BDE</code></div>
+                <div class="msg in card bad"><img src="assets/live-QTHONEY.png" alt="" width="1200" height="675" /><p class="note-in">Stopped. No Buy button. Your money stays put.</p></div>
+                <div class="msg out"><code>0xb3b3…3763</code></div>
+                <div class="msg in card"><img src="assets/chat-QTDOG.png" alt="" width="1200" height="675" /><div class="buttons"><span>Buy 0.01 QMS</span><span class="on">Buy 0.05 QMS</span></div></div>
+                <div class="msg in done"><b>Done. +61,541 QTDOG</b><span>Next block. Never less than a direct swap.</span></div>
+              </div>
             </div>
-            <div class="msg in done s4"><b>Done. +61,541 QTDOG</b><span>Next block. Never less than a direct swap.</span></div>
           </div>
         </div>
       </div>
@@ -95,11 +102,11 @@
           </article>
           <article class="pillar" style="--d:1">
             <div class="viz viz-price">
-              <div class="bars"><div><span>Direct swap on QWAP</span><i style="--w:96%"></i></div><div><span>Qalibre, when matched</span><i class="g" style="--w:100%"></i></div></div>
+              <div class="bars"><div><span>Swapping directly</span><i style="--w:96%"></i></div><div><span>Qalibre, when matched</span><i class="g" style="--w:100%"></i></div></div>
             </div>
             <p class="kicker"><b>02</b> On price</p>
-            <h3>Never worse than QWAP. Often better.</h3>
-            <p>Buyers and sellers in the same batch meet at one fair price. The contract refuses any fill below a direct swap.</p>
+            <h3>The best price, guaranteed by code.</h3>
+            <p>Buyers and sellers meet at one fair price, skipping pool fees. The contract refuses any fill worse than a direct swap.</p>
           </article>
           <article class="pillar" style="--d:2">
             <div class="viz viz-keys">
@@ -119,7 +126,7 @@
         <div>
           <p class="kicker gold">Built on QMS</p>
           <h2 class="rv"><span>Powered by the problem</span><span>QMS was built to solve.</span></h2>
-          <p class="body">Choosing which orders clear together is written as a QUBO, the optimization QMS useful-work miners solve. Every batch’s problem is published in a standard format anyone can verify, and every unmatched trade flows to QWAP, adding volume to QMS.</p>
+          <p class="body">Choosing which orders clear together is written as a QUBO, the optimization QMS useful-work miners solve. Every batch’s problem is published in a standard format anyone can verify, and every trade adds real volume to QMS.</p>
         </div>
       </div>
     </section>
@@ -129,7 +136,7 @@
         <p class="eyebrow center">In your chats</p>
         <h2 class="center rv"><span>Wins worth sharing.</span><span>Warnings worth hearing.</span></h2>
         <div class="cards" data-reveal>
-          <img src="assets/fill.png" alt="Trade card: 0.42% better than a direct swap on QWAP" width="1200" height="675" loading="lazy" />
+          <img src="assets/fill.png" alt="Trade card: 0.42% better than swapping directly" width="1200" height="675" loading="lazy" />
           <img src="assets/live-QTHONEY.png" alt="Safety card: Honeypot. You can buy QTHONEY. You cannot sell it." width="1200" height="675" loading="lazy" />
           <img src="assets/invite.png" alt="Invite card: 20% of Qalibre's fee on your friends' trades" width="1200" height="675" loading="lazy" />
         </div>
