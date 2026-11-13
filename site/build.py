@@ -69,7 +69,7 @@ def page(title: str, description: str, nav: str, body: str) -> str:
       <div><b>Trust</b><a href="security.html">Security</a><a href="{GITHUB}">Source code</a><a href="{GITHUB}/blob/main/docs/AUDIT.md">Audit report</a></div>
       <div><b>Legal</b><a href="terms.html">Terms</a><a href="privacy.html">Privacy</a><a href="risk.html">Risk notice</a></div>
     </div>
-    <div class="wrap foot-base"><span>© 2026 Qalibre</span><span>Not financial advice. Testnet only.</span></div>
+    <div class="wrap foot-base"><span>© 2026 Qalibre · <a href="mailto:hello@qalibre.app">hello@qalibre.app</a></span><span>Not financial advice. Testnet only.</span></div>
   </footer>
   <script src="main.js" defer></script>
 </body>

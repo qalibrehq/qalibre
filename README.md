@@ -3,9 +3,9 @@
 <p align="center"><b>Every trade, protected.</b></p>
 
 <p align="center">
-  <a href="https://qalibrehq.github.io/qalibre/">Website</a> ·
+  <a href="https://qalibre.app">Website</a> ·
   <a href="https://t.me/QalibreBot">Telegram</a> ·
-  <a href="https://qalibrehq.github.io/qalibre/security.html">Security</a> ·
+  <a href="https://qalibre.app/security.html">Security</a> ·
   <a href="docs/AUDIT.md">Audit</a>
 </p>
 
@@ -86,9 +86,13 @@ docker run -d --restart unless-stopped --env-file qalibre.env -v qalibre-data:/d
 
 ## Security
 
-Please report vulnerabilities privately through a [security advisory](https://github.com/qalibrehq/qalibre/security/advisories/new) rather than a public issue. The current audit status, including known open items, is kept in [`docs/AUDIT.md`](docs/AUDIT.md).
+Please report vulnerabilities privately to [security@qalibre.app](mailto:security@qalibre.app) or through a [security advisory](https://github.com/qalibrehq/qalibre/security/advisories/new), never in a public issue. The current audit status, including known open items, is kept in [`docs/AUDIT.md`](docs/AUDIT.md).
 
 Qalibre's safety checks reduce risk but cannot guarantee that a token is safe. Nothing in this repository is financial advice.
+
+## Contact
+
+General questions and partnerships: [hello@qalibre.app](mailto:hello@qalibre.app).
 
 ## License
 
