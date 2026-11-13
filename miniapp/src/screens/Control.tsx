@@ -140,7 +140,7 @@ export function Control({ me, nav, toast, refresh, backupNow = false }: { me: Me
         </div>
         <h2 style={{ margin: '32px 0 0', fontSize: 26, fontWeight: 600, letterSpacing: '-0.03em' }}>Keep this somewhere safe.</h2>
         <p className="muted" style={{ margin: '10px 0 0', fontSize: 14, lineHeight: 1.55 }}>
-          With this key you can control your wallet from any device, even without Qalibre. Anyone who has it can take your funds. Qalibre will never ask for it.
+          With this key you can control your wallet from anywhere, even without Qalibre: import it into MetaMask and open qalibre.app/recover. Anyone who has it can take your funds. Qalibre will never ask for it.
         </p>
         <div className="mono" style={{ marginTop: 24, padding: 16, borderRadius: 12, border: '1px solid var(--rule-strong)', background: 'var(--white)', fontSize: 14, lineHeight: 1.7, wordBreak: 'break-all', userSelect: 'all' }}>{key}</div>
         <button className="btn btn-line" style={{ marginTop: 12 }} onClick={async () => { if (await copy(key)) { haptic.success(); toast('Key copied. Store it in a password manager, then clear your clipboard.'); } }}>Copy key</button>

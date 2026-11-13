@@ -184,3 +184,49 @@ h3 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.08; letter-spa
 /* Two short sentences: each stays on one line, the size gives way first. */
 .share-h span { white-space: nowrap; }
 @media (max-width: 480px) { .share-h { font-size: clamp(26px, 7.6vw, 34px); } }
+
+/* Recovery: a working tool, so it reads like one. Steps on the left, the explanation beside them. */
+.recover { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr); gap: clamp(24px, 4vw, 56px); align-items: start; }
+.recover [hidden] { display: none !important; }
+.recover button.btn { border: 0; cursor: pointer; font-family: inherit; }
+.recover button.btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+.rc-panel { background: var(--white); border-radius: 24px; padding: 8px clamp(18px, 3vw, 30px); }
+.rc-steps { list-style: none; margin: 0; padding: 0; }
+.rc-step { padding: 24px 0; border-top: 1px solid var(--paper-2); }
+.rc-step:first-child { border-top: 0; }
+.rc-head { display: flex; align-items: center; gap: 12px; font-size: 17px; }
+.rc-num { width: 28px; height: 28px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; background: var(--paper); color: var(--graphite); flex: none; transition: background 0.3s, color 0.3s; }
+.rc-step[data-status="done"] .rc-num, .rc-step[data-status="ready"] .rc-num { background: var(--green); color: #f6f4ef; }
+.rc-step[data-status="warn"] .rc-num { background: #B08D57; color: #fff; }
+.rc-body { padding: 14px 0 0 40px; display: grid; gap: 14px; justify-items: start; }
+.rc-text { margin: 0; color: var(--graphite); font-size: 15px; line-height: 1.6; }
+.rc-step[data-status="warn"] .rc-text { color: #8a6a3a; }
+.rc-note { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.rc-gas { margin: 0; padding: 12px 14px; border-radius: 12px; background: rgba(176, 141, 87, 0.12); color: #6f5530; font-size: 14px; line-height: 1.5; }
+.rc-wallets { display: flex; flex-wrap: wrap; gap: 10px; }
+.rc-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; width: 100%; font-size: 14px; color: var(--graphite); }
+.rc-row code, .rc-row a { font: 500 13px 'JetBrains Mono', ui-monospace, monospace; color: var(--green); word-break: break-all; text-align: right; }
+.rc-more { width: 100%; font-size: 14px; color: var(--graphite); }
+.rc-more summary { cursor: pointer; }
+.rc-inline { display: flex; gap: 10px; width: 100%; margin-top: 10px; }
+.rc-inline input { flex: 1; min-width: 0; height: 48px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--paper-2); background: var(--paper); font: 14px 'JetBrains Mono', ui-monospace, monospace; color: var(--ink); }
+.rc-inline input:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+.rc-inline .btn { height: 48px; padding: 0 18px; font-size: 15px; }
+.rc-list { list-style: none; margin: 0; padding: 0; width: 100%; }
+.rc-token { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--paper-2); }
+.rc-token:first-child { border-top: 0; }
+.rc-name b { display: block; font-size: 15px; }
+.rc-name small { display: block; margin-top: 2px; font-size: 12px; color: var(--graphite); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-amt { font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 500; }
+.rc-move { height: 38px; padding: 0 14px; font-size: 14px; border-radius: 10px; }
+.rc-empty { padding: 12px 0; color: var(--graphite); font-size: 14px; }
+.rc-all { width: 100%; }
+.rc-side h2 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
+.rc-how { margin: 16px 0 20px; padding-left: 20px; display: grid; gap: 12px; color: var(--graphite); font-size: 15px; line-height: 1.55; }
+.rc-how b { color: var(--ink); font-weight: 600; }
+.rc-side .rc-note + .rc-note { margin-top: 10px; }
+@media (max-width: 880px) {
+  .recover { grid-template-columns: minmax(0, 1fr); }
+  .rc-side { order: -1; }
+  .rc-body { padding-left: 0; }
+}

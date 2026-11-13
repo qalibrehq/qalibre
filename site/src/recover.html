@@ -1,0 +1,60 @@
+<!-- title: Recover your wallet | description: Move everything out of your Qalibre wallet with MetaMask or any EVM wallet. No Qalibre server involved. | nav: recover -->
+    <section class="page-hero">
+      <div class="wrap">
+        <p class="eyebrow">Recovery</p>
+        <h1 class="rv"><span>Your money, out.</span><span class="g">No Qalibre needed.</span></h1>
+        <p class="lede">Connect the account that owns your Qalibre wallet and move everything into it. This page talks only to your wallet and the QMS network, never to our servers, and it never asks for your key.</p>
+      </div>
+    </section>
+
+    <section class="section tight">
+      <div class="wrap recover">
+        <div class="rc-panel" id="rc" aria-live="polite">
+          <ol class="rc-steps">
+            <li class="rc-step" data-step="connect">
+              <div class="rc-head"><span class="rc-num">1</span><b>Connect the owner account</b></div>
+              <div class="rc-body">
+                <p class="rc-text" data-el="connect-text">Use MetaMask, Rabby or any wallet where you imported the key you backed up in Qalibre.</p>
+                <div class="rc-wallets" data-el="wallets"></div>
+                <p class="rc-note" data-el="no-wallet" hidden>No wallet found in this browser. On a phone, open this page inside your wallet app’s browser: <a href="https://metamask.app.link/dapp/qalibre.app/recover">open in MetaMask</a>.</p>
+                <div class="rc-row" data-el="account" hidden><span>Owner account</span><code data-el="account-addr"></code></div>
+                <button class="btn" type="button" data-el="switch" hidden>Switch to QMS testnet</button>
+              </div>
+            </li>
+            <li class="rc-step" data-step="wallet">
+              <div class="rc-head"><span class="rc-num">2</span><b>Find your Qalibre wallet</b></div>
+              <div class="rc-body">
+                <div class="rc-row" data-el="wallet-row" hidden><span>Qalibre wallet</span><a data-el="wallet-addr" target="_blank" rel="noopener"></a></div>
+                <p class="rc-text" data-el="wallet-text">Found automatically from your owner account.</p>
+                <details class="rc-more">
+                  <summary>Use a different wallet address</summary>
+                  <form class="rc-inline" data-el="wallet-form"><input data-el="wallet-input" placeholder="0x… wallet address from the Qalibre app" spellcheck="false" autocomplete="off" /><button class="btn btn-quiet" type="submit">Use</button></form>
+                </details>
+              </div>
+            </li>
+            <li class="rc-step" data-step="move">
+              <div class="rc-head"><span class="rc-num">3</span><b>Move your funds</b></div>
+              <div class="rc-body">
+                <p class="rc-gas" data-el="gas" hidden>This account needs a little QMS to pay the network fee. On testnet you can get some free from the <a href="https://faucet.testnet.qms.finance" target="_blank" rel="noopener">QMS faucet</a>.</p>
+                <ul class="rc-list" data-el="list"></ul>
+                <form class="rc-inline" data-el="token-form" hidden><input data-el="token-input" placeholder="Another token: paste its address" spellcheck="false" autocomplete="off" /><button class="btn btn-quiet" type="submit">Add</button></form>
+                <button class="btn rc-all" type="button" data-el="all" hidden>Move everything</button>
+                <p class="rc-note">Each transfer is a transaction you approve in your wallet. Funds go only to the owner account above; the wallet contract allows nothing else.</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <aside class="rc-side">
+          <h2>Before you start</h2>
+          <ol class="rc-how">
+            <li><b>Back up your key.</b> In Qalibre, open Wallet, tap Back up your key, and enter your PIN.</li>
+            <li><b>Import it.</b> In MetaMask: account menu, Add account, Import account, then paste the key.</li>
+            <li><b>Connect here.</b> Your Qalibre wallet is found automatically and its balances appear.</li>
+          </ol>
+          <p class="rc-note">Never paste your key into a website, including this one. It belongs only in your wallet app.</p>
+          <p class="rc-note">This page is a single file you can read: <a href="https://github.com/qalibrehq/qalibre/blob/main/site/recover.js">recover.js</a>.</p>
+        </aside>
+      </div>
+    </section>
+    <script src="/recover.js" defer></script>
