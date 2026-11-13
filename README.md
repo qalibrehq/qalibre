@@ -1,45 +1,49 @@
-<p align="center"><img src="brand/qalibre-wordmark-ink.svg" width="220" alt="qalibre" /></p>
+<p align="center"><img src="brand/qalibre-wordmark-ink.svg" width="200" alt="Qalibre" /></p>
 
-<h3 align="center">Every trade, protected.</h3>
+<p align="center"><b>Every trade, protected.</b></p>
 
-<p align="center">Trading on QMS from Telegram. Every token is checked before you buy, every trade gets the best price available, and your keys never leave your phone.</p>
+<p align="center">
+  <a href="https://qalibrehq.github.io/qalibre/">Website</a> ·
+  <a href="https://t.me/QalibreBot">Telegram</a> ·
+  <a href="https://qalibrehq.github.io/qalibre/security.html">Security</a> ·
+  <a href="docs/AUDIT.md">Audit</a>
+</p>
 
-<p align="center"><a href="https://t.me/QalibreBot">Open in Telegram</a> · <a href="https://qalibrehq.github.io/qalibre/">Website</a> · <a href="docs/AUDIT.md">Audit</a> · <a href="#contracts">Contracts</a></p>
+Qalibre is a trading app for the QMS network that lives inside Telegram. Every token is test-traded before you can buy it, every trade is settled at the best price available and never below a direct swap, and your wallet is a smart account that only you can withdraw from.
 
----
+> Qalibre runs on QMS testnet. Test tokens have no value. Mainnet follows an independent security audit.
 
-**Live on QMS testnet.** Test tokens only; nothing here has real value.
+## How it works
 
-## What it does
+**Checked before you buy.** When a token is pasted, Qalibre simulates a buy and a sale against live chain state using a probe contract injected into an `eth_call`, so nothing is spent. Honeypots and hidden transfer taxes are refused. The bytecode is scanned for creator powers such as minting, pausing, blacklists and upgradeable proxies. The check runs again at the moment of purchase.
 
-| | |
-|---|---|
-| **Scams stopped before you buy** | Paste a token and Qalibre test-trades it on the live chain, spending nothing: a simulated buy and sale through an injected probe contract. Honeypots and hidden taxes are blocked outright. Creator powers (mint, pause, blacklist, upgradeable proxy) are found in the bytecode and explained in plain words. The check runs again at the moment of every buy. |
-| **The best price, enforced on-chain** | Orders are gathered into short batches. Buyers and sellers in the same batch trade with each other at one uniform price; only the remainder is routed to an exchange pool. Before anything settles, the settlement contract asks the exchange what a direct swap would pay and refuses any fill below it. |
-| **Self-custody, with limits** | Each user has an ERC-4337 smart account owned by a key created on their device and encrypted with their PIN. Qalibre holds a narrow session key: it can only settle orders into the user's own account, for tokens they approved, within per-trade and daily limits enforced by the contract. It cannot withdraw. |
-| **Built on QMS** | Choosing which orders clear together is posed as a QUBO, the optimization class QMS useful-work miners solve. Every batch's QUBO is exported in Matrix Market format so the selection can be verified. Today it is solved by simulated annealing and checked against an exact solver. |
+**Settled at the best price.** Orders are collected into short batches. Buyers and sellers in the same batch are matched at a single uniform price; only the remainder is routed to an exchange pool. The settlement contract quotes a direct swap for every order and reverts the batch if any fill would be worse.
 
-## How it fits together
+**Held by you.** Each user has an ERC-4337 smart account owned by a key generated on their device and encrypted with their PIN. Qalibre trades through a separate session key that can only settle orders into the user's own account, for tokens the user approved, within per-trade and daily limits enforced on-chain. It has no withdrawal rights and can be revoked at any time.
+
+**Native to QMS.** Selecting which orders clear together is formulated as a QUBO, the optimization class solved by QMS useful-work miners. Each batch's QUBO is exported in Matrix Market format so the selection can be reproduced. It is currently solved by simulated annealing and cross-checked against an exact solver.
+
+## Architecture
 
 ```
-Telegram chat ─┐                       ┌─ Settlement contract ── price floor vs a direct swap
-               ├─ backend (bot, API, ──┤    ├─ user smart accounts (session keys, limits)
-Mini App ──────┘  safety engine)       │    └─ venue adapters (exchange pools)
-                                       └─ solver: batch → QUBO → uniform price → settle
+ Telegram chat ─┐                          ┌─ QalibreSettlement ── direct-swap price floor
+                ├── backend ── solver ─────┤     ├─ QalibreAccount (per user, ERC-4337)
+ Mini App ──────┘   bot · API · safety     │     └─ venue adapters ── exchange pools
+                                           └─ QalibrePaymaster (sponsors owner actions)
 ```
 
-| Folder | What is in it |
+| Path | Contents |
 |---|---|
-| [`contracts/`](contracts) | Solidity (Foundry): settlement, smart account and factory, paymaster, venue adapter, safety probe. 58 tests, including invariants against a compromised backend. |
-| [`solver/`](solver) | Batch clearing: uniform-price matching, QUBO build and solve, settlement submission with reorg handling. |
-| [`backend/`](backend) | Telegram bot, Mini App API, safety engine, owner actions (ERC-4337, sponsored), share cards. |
-| [`miniapp/`](miniapp) | The Telegram Mini App (React): wallet, trading, approvals, limits, activity. |
-| [`site/`](site) | The website. |
-| [`docs/`](docs) | [Audit](docs/AUDIT.md) (including what is still open), [chat trading pre-mortem](docs/CHAT_TRADING.md), [expansion plan](docs/EXPANSION.md). |
+| [`contracts/`](contracts) | Solidity, built with Foundry: settlement, smart account and factory, paymaster, venue adapter, safety probe. |
+| [`solver/`](solver) | Batch clearing: uniform-price matching, QUBO construction and solving, settlement submission with reorganization handling. |
+| [`backend/`](backend) | Telegram bot, Mini App API, token safety engine, sponsored owner actions, share cards. |
+| [`miniapp/`](miniapp) | Telegram Mini App (React): wallet, trading, token approvals, limits, activity. |
+| [`site/`](site) | Website, published to GitHub Pages. |
+| [`docs/`](docs) | [Security audit and open items](docs/AUDIT.md), [chat trading design](docs/CHAT_TRADING.md), [expansion plan](docs/EXPANSION.md). |
 
-## Contracts
+## Deployments
 
-All verified on the [QMS testnet explorer](https://testnet.qmsscan.io) (chain 19480).
+QMS testnet, chain ID 19480. All contracts are verified on the [explorer](https://testnet.qmsscan.io).
 
 | Contract | Address |
 |---|---|
@@ -49,28 +53,43 @@ All verified on the [QMS testnet explorer](https://testnet.qmsscan.io) (chain 19
 | Exchange adapter | [`0xDfAf7FA80a5f31190d2Ea5A76a4F90b3d119b414`](https://testnet.qmsscan.io/address/0xDfAf7FA80a5f31190d2Ea5A76a4F90b3d119b414) |
 | Paymaster | [`0xd8f6886D35B541891F96ea79e45e4BbD87050f8C`](https://testnet.qmsscan.io/address/0xd8f6886D35B541891F96ea79e45e4BbD87050f8C) |
 
-Governance: adding a venue or raising a fee is delayed 48 hours and public on-chain; removals and fee cuts apply at once.
+Governance changes that could hurt users are slow and public: adding a venue or raising a fee takes effect only after a 48-hour delay. Removing a venue or lowering a fee is immediate.
 
 ## Fees
 
-Qalibre takes 20% of what it saves you versus a direct swap, never more than 0.2% of the trade. No saving, no fee. Exchange fees apply only to the part routed to a pool. Network costs are passed through at cost, capped by a maximum the user signs.
+Qalibre charges 20% of the improvement it delivers over a direct swap, capped at 0.2% of the trade, and nothing when there is no improvement. Exchange fees apply only to the portion routed to a pool. Network costs are passed through at cost, never above a maximum the user signs with each order.
 
-## Run it
+## Development
+
+**Requirements:** Node.js 24, [Foundry](https://book.getfoundry.sh), and Docker for production builds.
 
 ```bash
-# contracts
-cd contracts && forge test
-# solver and backend
+# Contracts
+cd contracts && forge install && forge test
+
+# Solver and backend
 cd solver && npm ci && npm test
 cd backend && npm ci && npm test
-# everything in one container (secrets via environment only)
-docker build -t qalibre . && docker run --env-file qalibre.env -v qalibre-data:/data -p 8787:8787 qalibre
+
+# Mini App
+cd miniapp && npm ci && npm run dev
+```
+
+**Configuration.** Secrets are read from the environment, or from `contracts/.env` during local development (see [`contracts/.env.example`](contracts/.env.example)). The backend additionally needs `TELEGRAM_BOT_TOKEN`, `SESSION_ENC_KEY`, and `MINIAPP_URL` for the public address of the Mini App. Never commit real keys.
+
+**Production.** One container runs the bot, the API, the Mini App and the batch engine:
+
+```bash
+docker build -t qalibre .
+docker run -d --restart unless-stopped --env-file qalibre.env -v qalibre-data:/data -p 8787:8787 qalibre
 ```
 
 ## Security
 
-Found a vulnerability? Please report it privately through a [GitHub security advisory](https://github.com/qalibrehq/qalibre/security/advisories/new), not a public issue. An external audit comes before mainnet.
+Please report vulnerabilities privately through a [security advisory](https://github.com/qalibrehq/qalibre/security/advisories/new) rather than a public issue. The current audit status, including known open items, is kept in [`docs/AUDIT.md`](docs/AUDIT.md).
 
-## Status
+Qalibre's safety checks reduce risk but cannot guarantee that a token is safe. Nothing in this repository is financial advice.
 
-Testnet. Not financial advice. A safety check reduces risk; it cannot guarantee a token is safe.
+## License
+
+© 2026 Qalibre. All rights reserved. A license for the source code will be published before mainnet.
