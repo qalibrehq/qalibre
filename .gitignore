@@ -9,3 +9,7 @@ contracts/cache/
 contracts/broadcast/*/31337/
 node_modules/
 dist/
+
+# local previews
+site/_*.html
+docs/cards/index.html
