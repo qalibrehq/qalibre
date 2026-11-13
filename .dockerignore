@@ -1,0 +1,15 @@
+# Never send secrets, local data or build output into an image.
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/dist
+backend/data
+solver/.demo
+solver/out
+contracts/out
+contracts/cache
+contracts/broadcast
+contracts/lib
+.git
+docs/cards/*.png

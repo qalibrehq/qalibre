@@ -1,0 +1,44 @@
+<!-- title: Security | description: How Qalibre protects you: self-custody wallets, an on-chain price floor, a simulated safety check, verified contracts and a published audit. | nav: security -->
+    <section class="page-hero">
+      <div class="wrap">
+        <p class="eyebrow">Security</p>
+        <h1 class="rv"><span>Don’t trust us.</span><span class="g">Check.</span></h1>
+        <p class="lede">Every protection in Qalibre is enforced by code you can read and contracts you can verify, not by a promise.</p>
+      </div>
+    </section>
+
+    <section class="section tight">
+      <div class="wrap grid-3" data-reveal>
+        <article class="tile" style="--d:0"><b>Your keys, on your phone</b><p>Your wallet is a smart account owned by a key created on your device and encrypted with your PIN. Qalibre never sees it. Back it up and you can use your wallet anywhere, without us.</p></article>
+        <article class="tile" style="--d:1"><b>A narrow permission</b><p>Qalibre trades with a separate key that can only settle orders into your own wallet, for tokens you approved, within per-trade and daily limits enforced by the contract. It cannot withdraw. You can revoke it at any time.</p></article>
+        <article class="tile" style="--d:2"><b>An on-chain price floor</b><p>Before a trade settles, the settlement contract asks QWAP what a direct swap would pay. If your fill is lower, the whole batch is refused. No server, including ours, can override it.</p></article>
+        <article class="tile" style="--d:3"><b>A real safety check</b><p>Tokens are test-bought and test-sold on the live chain without spending anything, and their code is scanned for minting, pausing, blacklists and upgradeability. It runs again at the moment you buy.</p></article>
+        <article class="tile" style="--d:4"><b>Slow changes, fast exits</b><p>Adding a trading venue or raising a fee waits 48 hours and is public on-chain before it applies. Removing a venue or lowering a fee takes effect at once.</p></article>
+        <article class="tile" style="--d:5"><b>Honest limits</b><p>A safety check reduces risk; it cannot promise a token is good. We are on testnet until an external audit is complete. Both are said plainly, everywhere.</p></article>
+      </div>
+    </section>
+
+    <section class="section band-paper2">
+      <div class="wrap two top">
+        <div>
+          <p class="eyebrow">Verified contracts</p>
+          <h2 class="rv"><span>Read the code</span><span>that holds the rules.</span></h2>
+          <p class="body">Each contract below is verified on the QMS Explorer, so its source matches what runs. The full code, tests and our internal audit, including what is still open, are public on GitHub.</p>
+        </div>
+        <ul class="contracts" data-reveal>
+          <li><span>Settlement</span><a href="https://testnet.qmsscan.io/address/0x88126dec9c886AEE446F1eB7c15524e6BCbb19F4">0x8812…19F4</a></li>
+          <li><span>Wallet factory</span><a href="https://testnet.qmsscan.io/address/0xC443B86882C67f42EafC136591964FfC82997154">0xC443…7154</a></li>
+          <li><span>Wallet implementation</span><a href="https://testnet.qmsscan.io/address/0xa82F72A2Ab8ceAD6aa285bE5A5370e3ea6F53E20">0xa82F…3E20</a></li>
+          <li><span>QWAP adapter</span><a href="https://testnet.qmsscan.io/address/0xDfAf7FA80a5f31190d2Ea5A76a4F90b3d119b414">0xDfAf…b414</a></li>
+          <li><span>Gas sponsor</span><a href="https://testnet.qmsscan.io/address/0xd8f6886D35B541891F96ea79e45e4BbD87050f8C">0xd8f6…0f8C</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap narrow-wrap center">
+        <p class="eyebrow center">Report a vulnerability</p>
+        <h2 class="rv"><span>Found something?</span><span>Tell us privately.</span></h2>
+        <p class="body narrow">Open a private security advisory on our GitHub repository with the steps to reproduce. Please don’t post it publicly until it is fixed. We reply to every report.</p>
+      </div>
+    </section>
