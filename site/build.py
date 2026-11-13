@@ -10,6 +10,18 @@ import re
 
 ROOT = pathlib.Path(__file__).parent
 SRC = ROOT / 'src'
+
+# Browsers cache scripts and styles for up to 10 minutes. Stamping each URL with a hash of the file's
+# contents means a new page never runs against an old script.
+ASSETS = ['style.css', 'pages.css', 'main.js', 'recover.js']
+
+
+def versioned(html: str) -> str:
+    import hashlib
+    for name in ASSETS:
+        digest = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()[:10]
+        html = html.replace(f'"/{name}"', f'"/{name}?v={digest}"')
+    return html
 GITHUB = 'https://github.com/qalibrehq/qalibre'
 
 WORDMARK = '''<svg viewBox="0 -6 257 88" width="{w}" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="8"><circle cx="24" cy="40" r="16"/><path d="M40 24 V78"/><circle cx="73" cy="40" r="16"/><path d="M89 24 V60"/><path d="M106 4 V60"/><path d="M123 24 V60"/><path d="M140 4 V60"/><circle cx="156" cy="40" r="16"/><path d="M189 24 V60 M189 42 A16 16 0 0 1 205 26"/><path d="M215 40 H247 M247 40 A16 16 0 1 0 242.3 51.3"/></g><circle cx="123" cy="10" r="5.6" fill="#B08D57"/><circle cx="123" cy="10" r="1.9" fill="var(--paper)"/></svg>'''
@@ -95,7 +107,7 @@ def main():
         if not m:
             raise SystemExit(f'{src.name}: missing front matter')
         title, description, nav = m.groups()
-        (ROOT / src.name).write_text(page(title, description, nav, text[m.end():], src.stem), encoding='utf8', newline='\n')
+        (ROOT / src.name).write_text(versioned(page(title, description, nav, text[m.end():], src.stem)), encoding='utf8', newline='\n')
         print('built', src.name)
     slugs = [p.stem for p in sorted(SRC.glob('*.html')) if not p.name.startswith('_') and p.stem != '404']
     urls = ''.join(f'  <url><loc>{SITE}/{"" if s == "index" else s}</loc></url>\n' for s in slugs)
