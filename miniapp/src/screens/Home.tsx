@@ -8,6 +8,7 @@ import { Avatar } from '../ui/Avatar';
 import { TabBar } from '../ui/TabBar';
 import { TestFundsButton } from '../ui/TestFunds';
 import type { Nav } from '../App';
+import { isBackedUp } from '../wallet';
 
 function useCountUp(target: number, ms = 900) {
   const [v, setV] = useState(0);
@@ -72,6 +73,13 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
     ...(me.positions ?? []).map((p) => ({ key: p.token, symbol: p.symbol, decimals: p.decimals, name: p.symbol, line: `${p.amount.toLocaleString('en-US', { maximumFractionDigits: p.amount >= 1000 ? 0 : 4 })} ${p.symbol}`, value: p.valueUsd, change: p.pnlPct })),
   ];
 
+  const [needsBackup, setNeedsBackup] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void isBackedUp().then((done) => alive && setNeedsBackup(!done));
+    return () => { alive = false; };
+  }, []);
+
   return (
     <div className="screen fade-in" style={{ paddingBottom: 0 }}>
       <div className="bar">
@@ -101,6 +109,17 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
         <button className="action" onClick={receive}><span className="disc"><Icon name="receive" /></span>Receive</button>
         <button className="action" onClick={() => nav('send')}><span className="disc"><Icon name="send" /></span>Send</button>
       </div>
+
+      {needsBackup && (
+        <button className="nudge" onClick={() => { haptic.select(); nav('control', { backup: '1' }); }}>
+          <span className="nudge-icon"><Icon name="key" size={20} /></span>
+          <span style={{ minWidth: 0 }}>
+            <b>Back up your wallet key</b>
+            <span>Your PIN can’t be reset. Your key is the way back in.</span>
+          </span>
+          <span className="chev"><Icon name="chevron" size={18} /></span>
+        </button>
+      )}
 
       <p className="section">Holdings</p>
       <div className="surface">

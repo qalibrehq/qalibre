@@ -201,3 +201,11 @@ input.pin:focus { outline: 2px solid var(--green); outline-offset: 1px; }
 .done-check { stroke-dasharray: 1; stroke-dashoffset: 1; animation: stroke 0.4s cubic-bezier(0.65, 0, 0.35, 1) 0.32s forwards; }
 @keyframes discIn { from { transform: scale(0.4); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .done-check { stroke-dashoffset: 0; } }
+
+/* Backup reminder: brass, the brand's 'attention' colour, never alarm red. */
+.nudge { display: flex; align-items: center; gap: 14px; width: 100%; margin-top: 26px; padding: 14px 16px; border-radius: 18px; border: 1px solid rgba(176, 141, 87, 0.45); background: rgba(176, 141, 87, 0.1); color: var(--ink); text-align: left; font: inherit; cursor: pointer; animation: rise 0.5s var(--ease) 0.2s both; }
+.nudge:active { background: rgba(176, 141, 87, 0.18); }
+.nudge b { display: block; font-size: 15px; font-weight: 600; }
+.nudge span span, .nudge > span:nth-child(2) > span { display: block; margin-top: 2px; font-size: 13px; color: var(--graphite); line-height: 1.4; }
+.nudge-icon { width: 40px; height: 40px; border-radius: 20px; background: #B08D57; color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
+.nudge .chev { margin-left: auto; color: var(--muted); flex: none; }

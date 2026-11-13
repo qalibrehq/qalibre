@@ -73,7 +73,7 @@ h2 { margin: 0; font-size: clamp(32px, 4.2vw, 52px); line-height: 1.04; letter-s
 .phone { justify-self: center; width: min(360px, 100%); aspect-ratio: 9 / 17; border-radius: 46px; background: var(--ink); padding: 11px; box-shadow: 0 40px 80px -36px rgba(15, 77, 58, 0.45), 0 18px 36px -24px rgba(17, 18, 20, 0.5); }
 .phone-top { height: 64px; border-radius: 36px 36px 0 0; background: #fbfaf7; display: flex; align-items: center; gap: 10px; padding: 0 20px; font-size: 14px; }
 .phone-top small { display: block; color: var(--muted); font-size: 12px; }
-.avatar { width: 34px; height: 34px; border-radius: 17px; background: var(--green) url('assets/icon-512.png') center / cover; }
+.avatar { width: 34px; height: 34px; border-radius: 17px; background: var(--green) url('/assets/icon-512.png') center / cover; }
 .chat { height: calc(100% - 64px); border-radius: 0 0 36px 36px; background: #e7e2d7; padding: 14px 12px; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; overflow: hidden; }
 .msg { max-width: 88%; border-radius: 16px; padding: 9px 12px; font-size: 13px; line-height: 1.4; background: var(--white); box-shadow: 0 1px 1px rgba(17, 18, 20, 0.06); }
 .msg.out { align-self: flex-end; background: #dcefd9; }

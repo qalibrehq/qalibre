@@ -140,7 +140,7 @@ export function Onboarding({ onDone, resume, upgraded = false }: { onDone: () =>
       ? upgraded
         ? 'Enter your PIN to open your wallet on the new, safer contracts. Your key stays the same, and test funds will be added again.'
         : 'Unlock your wallet key to finish setting up.'
-      : 'Six digits. It locks the wallet key that only lives on this device. Qalibre never sees it, and cannot reset it.';
+      : 'Six digits. It locks your wallet key, which is stored encrypted in your own Telegram account. Qalibre never sees it and cannot reset it, so you will back up the key next.';
   return (
     <div className="screen fade-in">
       <div className="bar"><Wordmark width={88} /></div>

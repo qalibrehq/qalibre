@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://qalibre.app">Website</a> ·
   <a href="https://t.me/QalibreBot">Telegram</a> ·
-  <a href="https://qalibre.app/security.html">Security</a> ·
+  <a href="https://qalibre.app/security">Security</a> ·
   <a href="docs/AUDIT.md">Audit</a>
 </p>
 

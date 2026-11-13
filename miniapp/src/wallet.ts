@@ -74,3 +74,12 @@ export async function exportKey(pin: string): Promise<Hex> {
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(vault.iv), additionalData: new TextEncoder().encode(vault.address) }, key, unb64(vault.ct));
   return new TextDecoder().decode(pt) as Hex;
 }
+
+const BACKUP_KEY = 'qalibre_backed_up_v1';
+/** Whether the user has confirmed saving their key. Until then the home screen keeps asking. */
+export async function isBackedUp(): Promise<boolean> {
+  return (await cloud.get(BACKUP_KEY)) === '1';
+}
+export function markBackedUp(): Promise<void> {
+  return cloud.set(BACKUP_KEY, '1');
+}

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Me } from '../api';
 import { haptic, openLink } from '../tg';
-import { exportKey, loadVault, WrongPin } from '../wallet';
+import { exportKey, loadVault, markBackedUp, WrongPin } from '../wallet';
 import { Back, Wordmark } from '../ui/Brand';
 import { Icon } from '../ui/Icons';
 import { TabBar } from '../ui/TabBar';
@@ -31,7 +31,7 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
-export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m: string) => void; refresh: () => void }) {
+export function Control({ me, nav, toast, refresh, backupNow = false }: { me: Me; nav: Nav; toast: (m: string) => void; refresh: () => void; backupNow?: boolean }) {
   const [backup, setBackup] = useState<'closed' | 'pin' | 'shown'>('closed');
   const [permission, setPermission] = useState<'off' | 'on' | null>(null);
   const [pin, setPin] = useState('');
@@ -48,9 +48,13 @@ export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: 
     }
   }
 
+  useEffect(() => {
+    if (backupNow) void startBackup();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function startBackup() {
     if (!(await loadVault())) {
-      toast('Your wallet key is on the device where you created the wallet.');
+      toast('Open Qalibre from the Telegram account you created the wallet with.');
       return;
     }
     setPin('');
@@ -141,7 +145,7 @@ export function Control({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: 
         <div className="mono" style={{ marginTop: 24, padding: 16, borderRadius: 12, border: '1px solid var(--rule-strong)', background: 'var(--white)', fontSize: 14, lineHeight: 1.7, wordBreak: 'break-all', userSelect: 'all' }}>{key}</div>
         <button className="btn btn-line" style={{ marginTop: 12 }} onClick={async () => { if (await copy(key)) { haptic.success(); toast('Key copied. Store it in a password manager, then clear your clipboard.'); } }}>Copy key</button>
         <div className="spacer" style={{ paddingTop: 20 }}>
-          <button className="btn btn-ink" onClick={() => { setKey(null); setBackup('closed'); }}>I've saved it</button>
+          <button className="btn btn-ink" onClick={() => { void markBackedUp(); haptic.success(); setKey(null); setBackup('closed'); toast('Backed up. Your wallet can always be recovered.'); }}>I’ve saved it</button>
         </div>
       </div>
     );
