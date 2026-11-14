@@ -306,3 +306,12 @@ button.rc-wallet .rc-wend { color: var(--green); background: rgba(15, 77, 58, 0.
 /* Structured config keeps its shape and scrolls inside its box; one-line commands wrap. */
 .code.json pre { white-space: pre; overflow-wrap: normal; overflow-x: auto; scrollbar-width: thin; scrollbar-color: rgba(246, 244, 239, 0.25) transparent; }
 @media (max-width: 520px) { .code:not(.soft) pre { font-size: 12.5px; padding-right: 20px; padding-top: 50px; } }
+
+/* Roadmap: what is live spans the full width (the proof); the phases ahead sit side by side beneath it. */
+.road > li.now { grid-column: 1 / -1; padding: 30px 30px 28px; }
+.road > li.now > b { font-size: 24px; }
+.road > li.now ul { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
+@media (max-width: 880px) {
+  .road { grid-template-columns: minmax(0, 1fr); }
+  .road > li.now ul { grid-template-columns: minmax(0, 1fr); }
+}
