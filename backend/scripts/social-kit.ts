@@ -35,13 +35,59 @@ const avatar = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"
 </svg>`;
 writeFileSync(join(out, 'x-avatar-400.png'), png(avatar, 400));
 
-// Header: green field, the big q held back on the right (as on the share cards), the line in the middle.
+// Header: the mechanism, not a slogan. Orders stream in from the left and meet at the brass ring, set in a
+// watch-dial bezel (Qalibre: calibre); one settled line leaves to the right. The name is already beside it on the
+// profile, so the header carries no wordmark. Lower-left stays quiet: X puts the profile photo there.
+let seed = 7;
+const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+const RX = 1010, RY = 250; // the ring
+const lines: string[] = [];
+const dots: string[] = [];
+for (let i = 0; i < 46; i++) {
+  const y0 = 18 + i * 10.4 + (rnd() - 0.5) * 8;
+  const x0 = -20;
+  const c1x = 300 + rnd() * 260, c2x = RX - 230 - rnd() * 120;
+  const endY = RY + (rnd() - 0.5) * 10;
+  const near = Math.abs(y0 - RY) / 250; // outer lines quieter
+  const op = (0.05 + (1 - near) * 0.16).toFixed(3);
+  const d = `M${x0} ${y0.toFixed(1)} C${c1x.toFixed(0)} ${y0.toFixed(1)} ${c2x.toFixed(0)} ${endY.toFixed(1)} ${RX - 46} ${endY.toFixed(1)}`;
+  lines.push(`<path d="${d}" fill="none" stroke="${C.paper}" stroke-opacity="${op}" stroke-width="1.2"/>`);
+  // A few orders in flight: small dots partway along their curve (cubic Bezier at t).
+  if (rnd() < 0.42) {
+    const t = 0.25 + rnd() * 0.6, u = 1 - t;
+    const px = u ** 3 * x0 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t ** 3 * (RX - 46);
+    const py = u ** 3 * y0 + 3 * u * u * t * y0 + 3 * u * t * t * endY + t ** 3 * endY;
+    const buy = rnd() < 0.5;
+    dots.push(`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${(2.2 + rnd() * 1.6).toFixed(1)}" fill="${buy ? '#8FD4AE' : C.paper}" fill-opacity="${buy ? 0.75 : 0.55}"/>`);
+  }
+}
+// Bezel: 60 ticks, every fifth longer, in brass.
+const ticks: string[] = [];
+for (let k = 0; k < 60; k++) {
+  const a = (k / 60) * Math.PI * 2;
+  const r1 = 118, r2 = k % 5 === 0 ? 134 : 126;
+  ticks.push(`<line x1="${(RX + r1 * Math.cos(a)).toFixed(1)}" y1="${(RY + r1 * Math.sin(a)).toFixed(1)}" x2="${(RX + r2 * Math.cos(a)).toFixed(1)}" y2="${(RY + r2 * Math.sin(a)).toFixed(1)}" stroke="${C.brass}" stroke-opacity="${k % 5 === 0 ? 0.7 : 0.35}" stroke-width="${k % 5 === 0 ? 2 : 1.2}"/>`);
+}
 const header = `<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="500" viewBox="0 0 1500 500">
-  <rect width="1500" height="500" fill="${C.green}"/>
-  ${q(1345, 236, 600, C.green, 0.08)}
-  ${wordmark(560, 150, 1.05, C.green)}
-  <text x="560" y="318" font-family="Inter" font-weight="600" font-size="58" letter-spacing="-2.2" fill="${C.paper}">Every trade, protected.</text>
-  <text x="562" y="370" font-family="Inter" font-weight="500" font-size="24" fill="${C.paper}" fill-opacity="0.62">Trading on QMS, inside Telegram. Checked, fair, yours.</text>
+  <defs>
+    <radialGradient id="glow" cx="${RX}" cy="${RY}" r="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1B6B52"/><stop offset="0.55" stop-color="${C.green}"/><stop offset="1" stop-color="#0B3D2E"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="${RX}" cy="${RY}" r="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${C.brass}" stop-opacity="0.22"/><stop offset="1" stop-color="${C.brass}" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1500" height="500" fill="url(#glow)"/>
+  ${lines.join('\n  ')}
+  ${dots.join('\n  ')}
+  <circle cx="${RX}" cy="${RY}" r="150" fill="url(#halo)"/>
+  <circle cx="${RX}" cy="${RY}" r="104" fill="none" stroke="${C.brass}" stroke-opacity="0.18" stroke-width="1"/>
+  ${ticks.join('\n  ')}
+  <path d="M${RX + 46} ${RY} H1520" stroke="${C.paper}" stroke-opacity="0.85" stroke-width="2"/>
+  <circle cx="${RX}" cy="${RY}" r="44" fill="${C.brass}"/>
+  <circle cx="${RX}" cy="${RY}" r="15" fill="#155C46"/>
+  <text x="1420" y="210" text-anchor="end" font-family="Inter" font-weight="500" font-size="22" letter-spacing="2.4" fill="${C.paper}" fill-opacity="0.7">ONE FAIR PRICE</text>
+  <text x="96" y="92" font-family="Inter" font-weight="600" font-size="34" letter-spacing="-0.8" fill="${C.paper}">Every trade, protected.</text>
 </svg>`;
 writeFileSync(join(out, 'x-header-1500x500.png'), png(header, 1500));
 console.log('written to', out);
