@@ -8,6 +8,7 @@ import type { Social } from './social.js';
 import { AGENT_KEY_DAYS, hashKey, issueAgentKey } from './agent.js';
 import { detectSecret, GROUP_WARNING, SECRET_WARNING } from './secrets.js';
 import { cleanText } from './tokens.js';
+import type { OAuth } from './oauth.js';
 
 interface Update {
   update_id: number;
@@ -50,7 +51,7 @@ export async function setupBot(bot: Bot) {
   }
 }
 
-export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Social) {
+export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Social, oauth?: OAuth) {
   let offset = 0;
   let stopped = false;
 
@@ -179,13 +180,56 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
   /** Users who tapped "Another name" and owe us a typed name (expires after 5 minutes). */
   const pendingName = new Map<number, { canTrade: boolean; at: number }>();
 
+  /** Two agents with one name would make the notices ambiguous: the second becomes "Claude 2". */
+  function uniqueLabel(tgId: number, rawName: string): string {
+    const taken = new Set(db.activeAgentKeys(tgId).map((x) => x.label.toLowerCase()));
+    let label = cleanText(rawName, 24) || 'Agent';
+    for (let i = 2; taken.has(label.toLowerCase()); i++) label = `${cleanText(rawName, 20) || 'Agent'} ${i}`;
+    return label;
+  }
+
+  // ---------- OAuth consent: an AI app asked to connect; the user decides here ----------
+  async function onOAuthStart(tgId: number, id: string) {
+    const r = oauth?.pending(id);
+    if (!r) return void (await bot.sendMessage(tgId, 'That connection request has expired. Start again from your AI app.'));
+    if (!svc.isRegistered(tgId)) return void (await bot.sendMessage(tgId, 'Create your wallet first, then connect your AI app again.'));
+    if (db.activeAgentKeys(tgId).length >= MAX_AGENT_KEYS) return void (await bot.sendMessage(tgId, `You already have ${MAX_AGENT_KEYS} agents connected. Revoke one with /agent first.`));
+    await bot.sendMessage(
+      tgId,
+      [
+        `<b>${esc(r.clientName)} wants to connect to your Qalibre wallet</b>`,
+        '',
+        `Pairing code: <b>${r.pairing}</b>`,
+        'Only continue if this matches the code on your screen and you started this yourself just now.',
+        '',
+        'If you allow trading, it can check tokens and trade inside your wallet: only tokens you approved, never high-risk ones, at most 1 QMS a trade and 5 QMS a day.',
+        'It can never withdraw or send money out. You get a message for every trade, and you can revoke it any time with /agent.',
+      ].join('\n'),
+      { reply_markup: { inline_keyboard: [[{ text: 'Allow trading', callback_data: `oa:t:${id}` }, { text: 'Read only', callback_data: `oa:r:${id}` }], [{ text: 'Deny', callback_data: `oa:d:${id}` }]] } },
+    );
+  }
+
+  async function onOAuthDecision(q: { id: string; from: { id: number }; data?: string; message?: { message_id: number } }) {
+    const m = /^oa:(t|r|d):([A-Za-z0-9_-]{22})$/.exec(q.data ?? '');
+    if (!m || !oauth) return void (await bot.answer(q.id));
+    const tgId = q.from.id;
+    const allow = m[1] !== 'd';
+    if (allow && db.activeAgentKeys(tgId).length >= MAX_AGENT_KEYS) return void (await bot.answer(q.id, `Revoke an agent with /agent first (limit ${MAX_AGENT_KEYS}).`, true));
+    const name = oauth.decide(m[2]!, tgId, allow, m[1] === 't', (n) => uniqueLabel(tgId, n));
+    if (!name) return void (await bot.answer(q.id, 'This request has expired or was already answered.', true));
+    await bot.answer(q.id, allow ? 'Connected' : 'Declined');
+    const text = allow
+      ? `<b>${esc(name)} is connected</b>  ·  ${m[1] === 't' ? 'can trade' : 'read-only'}
+Go back to your AI app; it finishes by itself. Revoke any time with /agent.`
+      : `<b>Declined.</b> ${esc(name)} was not connected.`;
+    if (q.message?.message_id) await bot.editMessage(tgId, q.message.message_id, text).catch(() => bot.sendMessage(tgId, text));
+    else await bot.sendMessage(tgId, text);
+  }
+
   async function createAgentKey(tgId: number, canTrade: boolean, rawName: string) {
     if (!svc.isRegistered(tgId)) return void (await bot.sendMessage(tgId, 'Create your wallet first.'));
     if (db.activeAgentKeys(tgId).length >= MAX_AGENT_KEYS) return void (await bot.sendMessage(tgId, `You can have up to ${MAX_AGENT_KEYS} agent keys. Revoke one with /agent first.`));
-    const taken = new Set(db.activeAgentKeys(tgId).map((x) => x.label.toLowerCase()));
-    let label = cleanText(rawName, 24) || 'Agent';
-    // Two agents with one name would make the notices ambiguous: number the second one.
-    for (let i = 2; taken.has(label.toLowerCase()); i++) label = `${cleanText(rawName, 20) || 'Agent'} ${i}`;
+    const label = uniqueLabel(tgId, rawName);
     const { secret } = issueAgentKey(db, tgId, { label, canTrade });
     const url = mcpUrl();
     const sent = (await bot.sendMessage(
@@ -316,6 +360,7 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
       }
       if (d.startsWith('m:') && q.message?.chat.type === 'private') return onMenu(q);
       if (d.startsWith('ag:') && q.message?.chat.type === 'private') return onAgent(q);
+      if (d.startsWith('oa:') && q.message?.chat.type === 'private') return onOAuthDecision(q);
       return chat.onCallback(q);
     }
     if (u.inline_query) return chat.onInlineQuery(u.inline_query);
@@ -336,6 +381,7 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
     const [first = '', payload = ''] = msg.text.trim().split(/\s+/);
     const cmd = first.toLowerCase().replace(/@\w+$/, '');
 
+    if (cmd === '/start' && /^oa_[A-Za-z0-9_-]{22}$/.test(payload)) return onOAuthStart(id, payload.slice(3));
     if (cmd === '/start' && payload && (await chat.onStartPayload(id, payload))) return;
     // An invite link: remember the inviter, then continue to the normal welcome.
     if (cmd === '/start' && payload) social.applyInvite(id, payload);

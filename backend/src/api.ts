@@ -117,6 +117,8 @@ export interface ApiExtras {
   botUsername?: string;
   /** The agent connector (MCP) at /mcp. */
   agent?: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+  /** OAuth for the agent connector: discovery, registration, authorize, token. Returns true when handled. */
+  oauth?: (req: IncomingMessage, res: ServerResponse, url: URL) => Promise<boolean>;
 }
 
 export function startApi(db: Db, svc: Service, owner: OwnerOps, extras: ApiExtras = {}) {
@@ -125,6 +127,7 @@ export function startApi(db: Db, svc: Service, owner: OwnerOps, extras: ApiExtra
     const url = new URL(req.url ?? '/', 'http://localhost');
     // Agent connector: its own authentication (agent keys), handled before any other route.
     if (url.pathname === '/mcp' && extras.agent) return extras.agent(req, res);
+    if (extras.oauth && (url.pathname.startsWith('/.well-known/') || url.pathname.startsWith('/oauth/')) && (await extras.oauth(req, res, url))) return;
     if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
       if (await serveStatic(url.pathname === '/' ? '/index.html' : url.pathname, res)) return;
       res.writeHead(404);

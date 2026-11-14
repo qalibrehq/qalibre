@@ -76,6 +76,8 @@ export interface AgentDeps {
   svc: Service;
   /** Tell the user what their agent did, with a Revoke button. */
   announce: (key: AgentKeyRow, html: string) => Promise<void>;
+  /** OAuth: resolve an access token to its grant, and where clients discover how to sign in. */
+  oauth?: { resolveAccessToken: (token: string) => AgentKeyRow | null; resourceMetadataUrl: string };
 }
 
 const WQMS = TOKENS.WQMS as Address;
@@ -370,9 +372,9 @@ async function readJson(req: IncomingMessage, max: number): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || 'null');
 }
 
-function deny(res: ServerResponse, status: number, message: string) {
+function deny(res: ServerResponse, status: number, message: string, resourceMetadata?: string) {
   const headers: Record<string, string> = { 'content-type': 'application/json', 'cache-control': 'no-store' };
-  if (status === 401) headers['www-authenticate'] = 'Bearer realm="qalibre", error="invalid_token"';
+  if (status === 401) headers['www-authenticate'] = `Bearer realm="qalibre", error="invalid_token"${resourceMetadata ? `, resource_metadata="${resourceMetadata}"` : ''}`;
   res.writeHead(status, headers);
   res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32001, message }, id: null }));
 }
@@ -385,10 +387,17 @@ export function createAgentHandler(deps: AgentDeps) {
     if (req.headers.origin) return deny(res, 403, 'Browser requests are not accepted.');
     const auth = req.headers.authorization ?? '';
     const secret = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
-    if (!KEY_RE.test(secret)) return deny(res, 401, 'Missing or malformed agent key. Create one with /agent in @QalibreBot.');
-    const key = deps.db.agentKeyByHash(hashKey(secret));
+    const meta = deps.oauth?.resourceMetadataUrl;
     const now = Math.floor(Date.now() / 1000);
-    if (!key || key.revoked_at || key.expires_at <= now) return deny(res, 401, 'This agent key is not valid. It may have been revoked or expired.');
+    let key: AgentKeyRow | null | undefined;
+    if (secret.startsWith('qat_') && deps.oauth) {
+      key = deps.oauth.resolveAccessToken(secret);
+      if (!key) return deny(res, 401, 'This connection has expired or was revoked. Reconnect from your AI app.', meta);
+    } else {
+      if (!KEY_RE.test(secret)) return deny(res, 401, 'Sign in required. Connect from your AI app, or create a key with /agent in @QalibreBot.', meta);
+      key = deps.db.agentKeyByHash(hashKey(secret));
+      if (!key || key.revoked_at || key.expires_at <= now) return deny(res, 401, 'This agent key is not valid. It may have been revoked or expired.', meta);
+    }
     if (!allow(`c:${key.id}`, CALLS_PER_MINUTE, 60_000)) return deny(res, 429, 'Too many requests for this key. Slow down.');
     deps.db.touchAgentKey(key.id);
 
