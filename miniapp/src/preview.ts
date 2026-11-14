@@ -94,6 +94,12 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has('preview')) 
     },
     '/api/stats': { savedUsd: 0.18, trades: 6, traders: 1, groups: 1, since: now - 86400, checked: 3, blocked: 2 },
   };
+  const q = new URLSearchParams(location.search);
+  if (q.has('empty') || q.has('funding')) {
+    const m = routes['/api/me'] as Record<string, unknown>;
+    m.totalUsd = 0; m.holdings = (m.holdings as { amount: number; valueUsd: number }[]).map((h) => ({ ...h, amount: 0, valueUsd: 0 })); m.positions = []; m.unwrappedQms = 0; m.savedUsd = 0; m.trades = 0;
+    m.testFundsAt = 0; m.testFundsPending = q.has('funding');
+  }
   const realFetch = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href).pathname;

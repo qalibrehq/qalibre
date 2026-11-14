@@ -148,25 +148,37 @@ export function createService(db: Db, notify: Notify) {
    * Send the test funds. Each transfer stands alone: if one fails, the ones already sent still count, so the
    * request is recorded and a retry can never send the same funds twice.
    */
+  /** One guard for the automatic welcome funds and the button, so a tap during the welcome drip cannot pay twice. */
+  const dripInFlight = new Set<number>();
+
+  /**
+   * Test QMS and USDC, sent together: both transfers go out at once (the relayer queue assigns their nonces) and
+   * are confirmed together, so a new user waits for one QMS block instead of two.
+   */
   async function sendTestFunds(account: Address): Promise<{ wqms: bigint; usdc: bigint }> {
     const sent = { wqms: 0n, usdc: 0n };
-    for (const [token, amount, key] of [[TOKENS.WQMS, config.drip.wqms, 'wqms'], [TOKENS.USDC, config.drip.usdc, 'usdc']] as const) {
+    const jobs = ([[TOKENS.WQMS, config.drip.wqms, 'wqms'], [TOKENS.USDC, config.drip.usdc, 'usdc']] as const).map(async ([token, amount, key]) => {
       try {
         const bal = await client.readContract({ address: token, abi: erc20Abi, functionName: 'balanceOf', args: [relayer.address] });
-        if (bal < amount) continue;
+        if (bal < amount) {
+          console.warn(`test funds: relayer is low on ${key}; top it up with scripts/fund-relayer.ts`);
+          return;
+        }
         const h = await relay((w) => w.writeContract({ address: token, abi: erc20Abi, functionName: 'transfer', args: [account, amount], account: relayer, chain: w.chain }));
         await waitForConfirmations(client, h, 1n);
         sent[key] = amount;
       } catch (e) {
         console.error(`test funds: ${key} transfer failed`, (e as Error).message.split('\n')[0]);
       }
-    }
+    });
+    await Promise.all(jobs);
     return sent;
   }
 
   async function drip(tgId: number, account: Address) {
     const u = db.getUser(tgId);
-    if (!u || u.dripped) return;
+    if (!u || u.dripped || dripInFlight.has(tgId)) return;
+    dripInFlight.add(tgId);
     try {
       const sent = await sendTestFunds(account);
       db.markDripped(tgId);
@@ -177,10 +189,11 @@ export function createService(db: Db, notify: Notify) {
       }
     } catch (e) {
       console.error('drip failed', (e as Error).message);
+    } finally {
+      dripInFlight.delete(tgId);
     }
   }
 
-  const dripInFlight = new Set<number>();
   async function requestTestFunds(tgId: number) {
     const u = db.getUser(tgId);
     if (!isCurrent(u)) throw new UserError('Open your wallet first.');
@@ -685,6 +698,8 @@ export function createService(db: Db, notify: Notify) {
       session: { active, validUntil: Number(validUntil), anyBuyToken, fastMode },
       limits: [limQms, limUsdc],
       testFundsAt: user.last_drip_at + 86_400,
+      /** True while test funds are being sent (the welcome drip or a request), so the app can say so. */
+      testFundsPending: dripInFlight.has(tgId),
     };
   }
 

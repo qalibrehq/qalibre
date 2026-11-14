@@ -52,6 +52,7 @@ export interface Me {
   limits?: { token: string; symbol: string; decimals: number; perTrade: number; perDay: number; spentToday: number }[];
   unwrappedQms?: number;
   testFundsAt?: number;
+  testFundsPending?: boolean;
 }
 
 export interface BatchStatus { nextBatchInMs: number; waiting: number; batch: number; intervalMs: number; lastRunAt: number }

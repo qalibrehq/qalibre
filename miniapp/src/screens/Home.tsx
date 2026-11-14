@@ -80,6 +80,16 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
   const visible = showAll ? holdings : collapsed;
   const hiddenCount = holdings.length - collapsed.length;
 
+  // While test funds are on their way, refresh every few seconds so the balance appears by itself.
+  useEffect(() => {
+    if (!me.testFundsPending) return;
+    const t = setInterval(refresh, 3_000);
+    return () => clearInterval(t);
+  }, [me.testFundsPending]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A nearly empty wallet with test funds available gets the card above Holdings (and not the row inside it).
+  const fundsCard = !me.testFundsPending && (me.totalUsd ?? 0) < 0.05 && (me.testFundsAt ?? 0) <= Date.now() / 1000;
+
   const [needsBackup, setNeedsBackup] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -128,6 +138,18 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
         </button>
       )}
 
+      {me.testFundsPending ? (
+        <div className="nudge funds" role="status" style={{ cursor: 'default' }}>
+          <span className="nudge-icon funds-icon"><Icon name="drop" size={20} /></span>
+          <span style={{ minWidth: 0 }}>
+            <b>Adding your test funds…</b>
+            <span>Free test QMS and USDC, usually in under 20 seconds.</span>
+          </span>
+        </div>
+      ) : fundsCard ? (
+        <TestFundsButton variant="card" onDone={() => setTimeout(refresh, 1500)} toast={toast} />
+      ) : null}
+
       <p className="section">Holdings</p>
       <div className="surface">
         {visible.map((h) => (
@@ -150,7 +172,7 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
             {showAll ? 'Show less' : `Show ${hiddenCount} more`}
           </button>
         )}
-        <TestFundsButton onDone={() => setTimeout(refresh, 1500)} toast={toast} />
+        {!fundsCard && !me.testFundsPending && <TestFundsButton onDone={() => setTimeout(refresh, 1500)} toast={toast} />}
       </div>
 
       <button onClick={() => { haptic.tap(); openChat(me.bot); }} className="surface" style={{ marginTop: 14, width: '100%', border: 0, padding: '18px 18px', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', cursor: 'pointer', background: 'var(--green)', color: 'var(--on-green)' }}>

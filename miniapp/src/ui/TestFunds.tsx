@@ -4,7 +4,7 @@ import { haptic } from '../tg';
 import { Icon } from './Icons';
 
 /** One tap: tradeable test QMS and USDC, once a day. Testnet only. */
-export function TestFundsButton({ onDone, toast, variant = 'row' }: { onDone: () => void; toast: (m: string) => void; variant?: 'row' | 'button' }) {
+export function TestFundsButton({ onDone, toast, variant = 'row' }: { onDone: () => void; toast: (m: string) => void; variant?: 'row' | 'button' | 'card' }) {
   const [busy, setBusy] = useState(false);
   async function go() {
     if (busy) return;
@@ -21,6 +21,19 @@ export function TestFundsButton({ onDone, toast, variant = 'row' }: { onDone: ()
     } finally {
       setBusy(false);
     }
+  }
+  if (variant === 'card') {
+    // The whole card is the button, like the backup reminder: one clear target, nothing squeezed.
+    return (
+      <button className="nudge funds" onClick={go} disabled={busy}>
+        <span className="nudge-icon funds-icon"><Icon name="drop" size={20} /></span>
+        <span style={{ minWidth: 0 }}>
+          <b>{busy ? 'Sending your test funds…' : 'Get free test funds'}</b>
+          <span>Test QMS and USDC for your first trade. Once a day, no card, no cost.</span>
+        </span>
+        <span className="chev"><Icon name="chevron" size={18} /></span>
+      </button>
+    );
   }
   if (variant === 'button') {
     return (

@@ -209,3 +209,8 @@ input.pin:focus { outline: 2px solid var(--green); outline-offset: 1px; }
 .nudge span span, .nudge > span:nth-child(2) > span { display: block; margin-top: 2px; font-size: 13px; color: var(--graphite); line-height: 1.4; }
 .nudge-icon { width: 40px; height: 40px; border-radius: 20px; background: #B08D57; color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
 .nudge .chev { margin-left: auto; color: var(--muted); flex: none; }
+
+/* Test funds: the brand green, not the brass reserved for attention. */
+.nudge.funds { border-color: rgba(15, 77, 58, 0.22); background: rgba(15, 77, 58, 0.06); }
+.funds-icon { background: var(--green); }
+.nudge.funds .btn { height: 38px; padding: 0 12px; font-size: 14px; }
