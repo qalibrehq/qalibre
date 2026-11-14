@@ -210,7 +210,12 @@ export function startApi(db: Db, svc: Service, owner: OwnerOps, extras: ApiExtra
         return send(res, 200, await svc.placeOrder(user.id, body.sell as Address, body.buy as Address, parseAmount(body.amount), mode, { acceptImpact: body.acceptImpact === true }), origin);
       }
       if (req.method === 'GET' && url.pathname === '/api/orders') {
-        return send(res, 200, { orders: db.userOrders(user.id).map(({ signature: _s, nonce: _n, ...o }) => o) }, origin);
+        // Paged, newest first: ?limit=20&before_at=<unix seconds>&before_id=<order id> for the next page.
+        const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 20));
+        const at = Number(url.searchParams.get('before_at'));
+        const id = url.searchParams.get('before_id') ?? '';
+        const before = Number.isFinite(at) && at > 0 && /^[0-9a-f-]{36}$/.test(id) ? { at, id } : undefined;
+        return send(res, 200, { orders: db.userOrdersPage(user.id, limit, before).map(({ signature: _s, nonce: _n, ...o }) => o) }, origin);
       }
       const m = url.pathname.match(/^\/api\/orders\/([0-9a-f-]{36})$/);
       if (req.method === 'GET' && m) {

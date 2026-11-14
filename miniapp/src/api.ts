@@ -97,7 +97,8 @@ export const api = {
   complete: (signature: string) => call<{ account: string }>('/api/register/complete', { method: 'POST', body: JSON.stringify({ signature }) }),
   quote: (sell: string, buy: string, amount: bigint) => call<Quote>(`/api/quote?sell=${sell}&buy=${buy}&amount=${amount}`),
   order: (sell: string, buy: string, amount: bigint, mode: 'instant' | 'best', acceptImpact = false) => call<{ id: string; minOut: string; likely: string; direct: string; nextBatchInMs: number }>('/api/orders', { method: 'POST', body: JSON.stringify({ sell, buy, amount: amount.toString(), mode, acceptImpact }) }),
-  orders: () => call<{ orders: OrderRow[] }>('/api/orders'),
+  orders: (limit = 20, before?: { at: number; id: string }) =>
+    call<{ orders: OrderRow[] }>(`/api/orders?limit=${limit}${before ? `&before_at=${before.at}&before_id=${before.id}` : ''}`),
   testFunds: () => call<{ wqms: string; usdc: string }>('/api/test-funds', { method: 'POST' }),
   orderById: (id: string) => call<OrderRow>(`/api/orders/${id}`),
 };

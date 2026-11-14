@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, fromUnits, TOKENS, type Me, type OrderRow } from '../api';
 import { TokenIcon } from '../ui/TokenIcon';
 import { TabBar } from '../ui/TabBar';
@@ -41,14 +41,38 @@ function dayLabel(ts: number) {
 }
 
 export function Activity({ me, nav }: { me: Me; nav: Nav }) {
+  const PAGE = 20;
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const shown = useRef(PAGE); // how many rows are on screen, so the live refresh keeps older pages too
   const meta = tokenMeta(me);
   useEffect(() => {
-    const load = () => api.orders().then((r) => setOrders(r.orders)).catch(() => setOrders([]));
+    const load = () =>
+      api
+        .orders(Math.max(PAGE, shown.current))
+        .then((r) => {
+          setOrders(r.orders);
+          setHasOlder(r.orders.length >= Math.max(PAGE, shown.current));
+        })
+        .catch(() => setOrders((o) => o ?? []));
     load();
     const t = setInterval(load, 4_000);
     return () => clearInterval(t);
   }, []);
+  async function loadOlder() {
+    const last = orders && orders.length ? orders[orders.length - 1] : undefined;
+    if (!last || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const r = await api.orders(PAGE, { at: last.created_at, id: last.id });
+      setOrders((cur) => [...(cur ?? []), ...r.orders.filter((o) => !(cur ?? []).some((c) => c.id === o.id))]);
+      shown.current += r.orders.length;
+      setHasOlder(r.orders.length === PAGE);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
 
   // Group by day, newest first.
   const groups: [string, OrderRow[]][] = [];
@@ -116,6 +140,12 @@ export function Activity({ me, nav }: { me: Me; nav: Nav }) {
           </div>
         </div>
       ))}
+
+      {hasOlder && (
+        <button className="btn btn-line" style={{ marginTop: 16, height: 46 }} disabled={loadingOlder} onClick={() => void loadOlder()}>
+          {loadingOlder ? 'Loading…' : 'Show older'}
+        </button>
+      )}
 
       <div className="spacer" />
       <TabBar current="activity" nav={nav} />

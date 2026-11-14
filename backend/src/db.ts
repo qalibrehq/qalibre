@@ -285,7 +285,14 @@ export function openDb(path: string) {
       return db.prepare('SELECT * FROM orders WHERE id = ?').get(id) as OrderRow | undefined;
     },
     userOrders(tgId: number, limit = 30): OrderRow[] {
-      return db.prepare('SELECT * FROM orders WHERE tg_id = ? ORDER BY created_at DESC LIMIT ?').all(tgId, limit) as unknown as OrderRow[];
+      return db.prepare('SELECT * FROM orders WHERE tg_id = ? ORDER BY created_at DESC, id DESC LIMIT ?').all(tgId, limit) as unknown as OrderRow[];
+    },
+    /** One page of a user's orders, newest first, strictly older than (beforeAt, beforeId) when given. */
+    userOrdersPage(tgId: number, limit: number, before?: { at: number; id: string }): OrderRow[] {
+      if (!before) return this.userOrders(tgId, limit);
+      return db
+        .prepare('SELECT * FROM orders WHERE tg_id = ? AND (created_at < ? OR (created_at = ? AND id < ?)) ORDER BY created_at DESC, id DESC LIMIT ?')
+        .all(tgId, before.at, before.at, before.id, limit) as unknown as OrderRow[];
     },
     /** Every filled order, for one user or (no argument) everyone, oldest first. */
     filledOrders(tgId?: number): OrderRow[] {
