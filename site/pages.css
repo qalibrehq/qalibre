@@ -266,3 +266,10 @@ button.rc-wallet .rc-wend { color: var(--green); background: rgba(15, 77, 58, 0.
   .rc-modal[open] { animation-name: rc-up; }
 }
 @keyframes rc-up { from { transform: translateY(100%); } }
+
+/* Official accounts in the footer: quiet outlined marks that take the brand green on hover. */
+.social { display: flex; gap: 10px; margin-top: 18px; }
+.social a { width: 40px; height: 40px; border-radius: 20px; display: inline-flex; align-items: center; justify-content: center; color: var(--graphite); box-shadow: inset 0 0 0 1px var(--paper-2); background: var(--white); transition: color 0.2s, box-shadow 0.2s, transform 0.15s var(--ease); }
+.social a:hover { color: var(--green); box-shadow: inset 0 0 0 1px rgba(15, 77, 58, 0.35); }
+.social a:active { transform: scale(0.96); }
+.social a:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
