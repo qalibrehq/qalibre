@@ -14,6 +14,9 @@ RUN npm run build
 # 2. Runtime: backend + solver (TypeScript run directly with tsx).
 FROM node:24-slim
 ENV NODE_ENV=production PORT=8787 DB_PATH=/data/qalibre.sqlite
+# The slim image has no system CA bundle. Node carries its own, but the Turso (libsql) driver uses the system's
+# to verify TLS, so install it.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /srv
 COPY solver/package.json solver/package-lock.json solver/
 RUN cd solver && npm ci --omit=dev --no-audit --no-fund
