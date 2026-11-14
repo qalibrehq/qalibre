@@ -47,7 +47,13 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has('preview')) 
       { symbol: 'QMS', name: 'QMS', amount: 1.2483, valueUsd: 4.21, token: '0x9AA510295aC664A3d5A3182a3eFe959DE2B12c34' },
       { symbol: 'USDC', name: 'USD Coin', amount: 12.4, valueUsd: 12.4, token: '0xDfF68E53a0A8275212927c12017f5aB5f1842a04' },
     ],
-    positions: [{ symbol: 'QTDOG', name: 'Qalibre Test Dog (testnet)', token: DOG, decimals: 18, balance: '61540993180947721362412', amount: 61540.99, valueUsd: 0.034, pnlPct: 4.2 }],
+    positions: [
+      { symbol: 'QTDOG', name: 'Qalibre Test Dog (testnet)', token: DOG, decimals: 18, balance: '61540993180947721362412', amount: 61540.99, valueUsd: 0.034, pnlPct: 4.2 },
+      // ?preview&many: a crowded wallet, with dust, to check the list stays short.
+      ...(new URLSearchParams(location.search).has('many')
+        ? [['PEPE', 3.2, 12.5], ['WIF', 1.4, -3.1], ['BONK', 0.9, 40.2], ['MOON', 0.12, -60], ['DUST1', 0.004, -90], ['DUST2', 0.0001, -99], ['CAT', 0.45, 8]].map(([sym, v, pnl], i) => ({ symbol: sym as string, name: sym as string, token: `0x${(i + 1).toString(16).padStart(40, '0')}`, decimals: 18, balance: '1000000000000000000000', amount: 1000, valueUsd: v as number, pnlPct: pnl as number }))
+        : []),
+    ],
     totalUsd: 16.64,
     savedUsd: 0.18,
     trades: 6,

@@ -70,8 +70,15 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
 
   const holdings = [
     ...(me.holdings ?? []).map((h) => ({ key: h.token, symbol: h.symbol, decimals: h.symbol === 'USDC' ? 6 : 18, name: h.name, line: `${h.amount.toLocaleString('en-US', { maximumFractionDigits: h.symbol === 'USDC' ? 2 : 4 })} ${h.symbol}`, value: h.valueUsd, change: null as number | null })),
-    ...(me.positions ?? []).map((p) => ({ key: p.token, symbol: p.symbol, decimals: p.decimals, name: p.symbol, line: `${p.amount.toLocaleString('en-US', { maximumFractionDigits: p.amount >= 1000 ? 0 : 4 })} ${p.symbol}`, value: p.valueUsd, change: p.pnlPct })),
+    // Tokens by value, largest first; QMS and USDC (above) always lead.
+    ...[...(me.positions ?? [])].sort((a, b) => b.valueUsd - a.valueUsd).map((p) => ({ key: p.token, symbol: p.symbol, decimals: p.decimals, name: p.symbol, line: `${p.amount.toLocaleString('en-US', { maximumFractionDigits: p.amount >= 1000 ? 0 : 4 })} ${p.symbol}`, value: p.valueUsd, change: p.pnlPct })),
   ];
+  // A short list by default: at most five rows, and dust (tokens worth under a cent) only when expanded.
+  const [showAll, setShowAll] = useState(false);
+  const isCore = (s: string) => s === 'QMS' || s === 'USDC';
+  const collapsed = holdings.filter((x) => isCore(x.symbol) || x.value >= 0.01).slice(0, 5);
+  const visible = showAll ? holdings : collapsed;
+  const hiddenCount = holdings.length - collapsed.length;
 
   const [needsBackup, setNeedsBackup] = useState(false);
   useEffect(() => {
@@ -123,7 +130,7 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
 
       <p className="section">Holdings</p>
       <div className="surface">
-        {holdings.map((h) => (
+        {visible.map((h) => (
           <button key={h.key} className="item" onClick={() => { haptic.select(); nav('trade', { side: h.symbol === 'USDC' ? 'sell' : 'buy', token: h.symbol === 'USDC' ? '0x9AA510295aC664A3d5A3182a3eFe959DE2B12c34' : h.key, symbol: h.symbol === 'USDC' ? 'QMS' : h.symbol, decimals: String(h.symbol === 'USDC' ? 18 : h.decimals) }); }}>
             <TokenIcon address={h.key} size={40} />
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -138,6 +145,11 @@ export function Home({ me, nav, toast, refresh }: { me: Me; nav: Nav; toast: (m:
             </div>
           </button>
         ))}
+        {hiddenCount > 0 && (
+          <button className="item" onClick={() => { haptic.select(); setShowAll(!showAll); }} style={{ justifyContent: 'center', color: 'var(--graphite)', fontSize: 14, fontWeight: 500 }}>
+            {showAll ? 'Show less' : `Show ${hiddenCount} more`}
+          </button>
+        )}
         <TestFundsButton onDone={() => setTimeout(refresh, 1500)} toast={toast} />
       </div>
 
