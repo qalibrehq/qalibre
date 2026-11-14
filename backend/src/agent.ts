@@ -291,7 +291,7 @@ function buildServer(deps: AgentDeps, key: AgentKeyRow) {
       if (s.verdict === 'high') return refuse(`This token is high risk (${s.score}/100). Agents cannot buy high-risk tokens; the user can decide in Telegram.`);
       const q = await svc.quote(WQMS, addr, amount).catch(() => null);
       if (q && q.impactBps > CONFIRM_IMPACT_BPS) return refuse(`This trade would move the price about ${(q.impactBps / 100).toFixed(1)}%. Try a smaller amount.`);
-      return place(WQMS, addr, amount, `bought ${cleanText(s.token.symbol, 16)} with ${formatUnits(amount, QMS_DECIMALS)} QMS`);
+      return place(WQMS, addr, amount, `placed an order to buy ${cleanText(s.token.symbol, 16)} with ${formatUnits(amount, QMS_DECIMALS)} QMS`);
     },
   );
 
@@ -312,7 +312,7 @@ function buildServer(deps: AgentDeps, key: AgentKeyRow) {
       const amount = await sellAmount(addr, percent);
       if (typeof amount === 'string') return refuse(amount);
       const t = await tokenInfo(addr).catch(() => null);
-      return place(addr, WQMS, amount, `sold ${percent}% of ${cleanText(t?.symbol ?? 'a token', 16)} for QMS`);
+      return place(addr, WQMS, amount, `placed an order to sell ${percent}% of ${cleanText(t?.symbol ?? 'a token', 16)} for QMS`);
     },
   );
 

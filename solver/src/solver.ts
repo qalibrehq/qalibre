@@ -83,8 +83,12 @@ export async function planBatch(
   });
   const qubo = buildQubo(items, RHO);
   const selection = await optimizer(qubo);
-  const chosen = orders.filter((_, i) => selection[i] === 1);
-  if (chosen.length === 0) return null;
+  let chosen = orders.filter((_, i) => selection[i] === 1);
+  // The QUBO chooses which orders net well *together*. It penalises size, so a lone order larger than RHO of the
+  // pool scores as "not worth matching" and would never be selected. That must not strand it: an order that is
+  // feasible on its own still settles against the pool. clearPair enforces every order's own minimum, so handing
+  // it the full set is safe; anything it cannot fill is dropped there, not here.
+  if (chosen.length === 0) chosen = orders;
 
   // 2. Uniform clearing price and the AMM leg.
   const pairOrders: PairOrder[] = chosen.map((o) => ({

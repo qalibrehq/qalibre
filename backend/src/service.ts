@@ -440,8 +440,7 @@ export function createService(db: Db, notify: Notify) {
       const now = Math.floor(Date.now() / 1000);
       for (const o of db.pendingOrders()) {
         if (o.valid_to < now + 20) {
-          db.markStatus(o.id, 'expired', 'Not filled in time. Nothing was traded.');
-          await notify(o.tg_id, "<b>That trade didn't fill in time.</b>\nWe couldn't get it within your price limit, so nothing was traded and your balance hasn't changed.", { order: o, kind: 'expired' });
+          if (db.markStatus(o.id, 'expired', 'Not filled in time. Nothing was traded.')) await notify(o.tg_id, "<b>That trade didn't fill in time.</b>\nWe couldn't get it within your price limit, so nothing was traded and your balance hasn't changed.", { order: o, kind: 'expired' });
         }
       }
       const groups = new Map<string, OrderRow[]>();
@@ -456,6 +455,7 @@ export function createService(db: Db, notify: Notify) {
           for (let attempt = 0; attempt < 3 && !done; attempt++) {
             const plan = await planBatch(client, dep, queue, fees);
             if (!plan) {
+              console.warn(`batch: no feasible plan for ${queue.length} order(s) on ${pairKey(rows[0]!)}; they wait for the price to come back or expire`);
               queue = [];
               break;
             }
@@ -495,9 +495,9 @@ export function createService(db: Db, notify: Notify) {
             const blockers = await isolateBlockers(queue, fees);
             if (blockers.length === 0) break; // transient (for example the pool kept moving): retry next tick
             for (const b of blockers) {
-              db.markStatus(b.id, 'failed', 'This order could not be settled, so nothing was traded. Your balance is unchanged.');
+              const changed = db.markStatus(b.id, 'failed', 'This order could not be settled, so nothing was traded. Your balance is unchanged.');
               const row = db.getOrder(b.id);
-              if (row) void notify(row.tg_id, '<b>That trade didn\'t go through.</b>\nNothing was traded and your balance hasn\'t changed. It\'s usually a limit, or trading being off. Check your Wallet, then try again.', { order: row, kind: 'failed' });
+              if (changed && row) void notify(row.tg_id, '<b>That trade didn\'t go through.</b>\nNothing was traded and your balance hasn\'t changed. It\'s usually a limit, or trading being off. Check your Wallet, then try again.', { order: row, kind: 'failed' });
             }
             const ids = new Set(blockers.map((b) => b.id));
             queue = queue.filter((q) => !ids.has(q.id));

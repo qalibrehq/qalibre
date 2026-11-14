@@ -32,7 +32,7 @@ const agent = createAgentHandler({
   svc,
   announce: async (key, what) => {
     await bot.sendMessage(key.tg_id, `<b>Your agent ${esc(key.label)}</b> ${esc(what)}.
-It settles at no worse than a direct swap. Not you? Revoke it now.`, {
+You'll get a message when it settles, at no worse than a direct swap. Not you? Revoke it now.`, {
       reply_markup: { inline_keyboard: [[{ text: `Revoke ${key.label}`, callback_data: `ag:rv:${key.id}` }, { text: 'All agents', callback_data: 'ag:list' }]] },
     });
   },

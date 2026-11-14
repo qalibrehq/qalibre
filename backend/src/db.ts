@@ -305,8 +305,12 @@ export function openDb(path: string) {
       const r = db.prepare("UPDATE orders SET status = 'expired', reason = ?, updated_at = ? WHERE tg_id = ? AND status = 'pending'").run(reason, now(), tgId);
       return Number(r.changes);
     },
-    markStatus(id: string, status: 'expired' | 'failed', reason: string) {
-      db.prepare('UPDATE orders SET status = ?, reason = ?, updated_at = ? WHERE id = ?').run(status, reason, now(), id);
+    /**
+     * Ends a pending order. Only a pending order changes: a fill recorded by another engine (for example during a
+     * deploy, when old and new servers briefly overlap) is never overwritten. Returns whether it changed.
+     */
+    markStatus(id: string, status: 'expired' | 'failed', reason: string): boolean {
+      return Number(db.prepare("UPDATE orders SET status = ?, reason = ?, updated_at = ? WHERE id = ? AND status = 'pending'").run(status, reason, now(), id).changes) === 1;
     },
     insertBatch(b: { tx: string; block: number; trades: number; mtx: string }): number {
       const r = db.prepare('INSERT INTO batches (tx_hash, block, trades, qubo_mtx, created_at) VALUES (?, ?, ?, ?, ?)').run(b.tx, b.block, b.trades, b.mtx, now());
