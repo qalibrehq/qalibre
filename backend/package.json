@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
+    "libsql": "^0.5.29",
     "viem": "^2.21.54"
   },
   "devDependencies": {

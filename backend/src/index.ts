@@ -27,4 +27,11 @@ startBot(bot, db, svc, chat, social);
 startApi(db, svc, createOwnerOps(db, { onApproved: (tgId, tokens) => chat?.afterApproval(tgId, tokens) }), { invite: (id) => social.inviteSummary(id), botUsername: me.username });
 
 setInterval(() => void svc.runBatch(), config.tickMs);
+
+// Free hosts put a service to sleep after ~15 minutes without inbound requests. Render tells us our public
+// address, so we visit ourselves through the internet every 10 minutes; the bot and batch engine stay awake.
+const publicUrl = process.env.RENDER_EXTERNAL_URL;
+if (publicUrl) {
+  setInterval(() => void fetch(`${publicUrl}/api/health`).catch(() => undefined), 10 * 60_000);
+}
 console.log(`Qalibre backend running. Settlement ${svc.deployment.settlement}. Instant orders clear in the next block; best-price orders wait up to ${config.bestWindowMs / 1000}s for a match.`);

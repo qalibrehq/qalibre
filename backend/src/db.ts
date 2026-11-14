@@ -1,9 +1,35 @@
 import { createRequire } from 'node:module';
 import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
-// Loaded through Node's own resolver: some bundlers (vitest/vite) do not yet know the node:sqlite built-in.
-const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: typeof DatabaseSyncType };
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+
+/**
+ * Storage: SQLite through libsql. Locally it is a plain file. In production (TURSO_DATABASE_URL set) the file is
+ * an embedded replica of a Turso database: reads stay local and fast, writes go to Turso, so nothing is lost
+ * when a free host wipes its disk on restart. The API is the same synchronous one the rest of the code uses.
+ */
+interface LibsqlStatement { run(...a: unknown[]): { changes: number; lastInsertRowid: number | bigint }; get(...a: unknown[]): Record<string, unknown> | undefined; all(...a: unknown[]): Record<string, unknown>[] }
+interface LibsqlDb { exec(sql: string): void; prepare(sql: string): LibsqlStatement; sync?(): unknown; close(): void }
+const Libsql = createRequire(import.meta.url)('libsql') as new (path: string, opts?: Record<string, unknown>) => LibsqlDb;
+
+function openRaw(path: string): DatabaseSyncType {
+  const url = process.env.TURSO_DATABASE_URL;
+  const raw = url
+    ? new Libsql(path, { syncUrl: url, authToken: process.env.TURSO_AUTH_TOKEN, syncPeriod: 60, readYourWrites: true })
+    : new Libsql(path);
+  if (url) raw.sync?.();
+  // libsql adds a `_metadata` field to single-row results; strip it so rows look exactly like before.
+  const wrap = (st: LibsqlStatement) => ({
+    run: (...a: unknown[]) => st.run(...a),
+    all: (...a: unknown[]) => st.all(...a),
+    get: (...a: unknown[]) => {
+      const row = st.get(...a);
+      if (row && '_metadata' in row) delete row._metadata;
+      return row;
+    },
+  });
+  return { exec: (sql: string) => raw.exec(sql), prepare: (sql: string) => wrap(raw.prepare(sql)), close: () => raw.close() } as unknown as DatabaseSyncType;
+}
 
 export interface UserRow {
   tg_id: number;
@@ -53,9 +79,8 @@ export interface OrderRow {
 
 export function openDb(path: string) {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
-  const db = new DatabaseSync(path);
+  const db = openRaw(path);
   db.exec(`
-    PRAGMA journal_mode = WAL;
     CREATE TABLE IF NOT EXISTS users (
       tg_id INTEGER PRIMARY KEY,
       first_name TEXT,

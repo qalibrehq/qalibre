@@ -1,0 +1,36 @@
+# Render Blueprint: one free web service running the bot, the Mini App API and the batch engine (see Dockerfile).
+# Secrets are entered in the Render dashboard (sync: false), never committed. The contract owner key is NOT
+# configured here: the server pays gas with its own RELAYER_PRIVATE_KEY, which has no admin rights.
+services:
+  - type: web
+    name: qalibre
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: MINIAPP_URL
+        value: https://app.qalibre.app
+      - key: ALLOWED_ORIGINS
+        value: https://app.qalibre.app
+      - key: QMS_RPC_URL
+        value: https://rpc.testnet.qms.finance
+      - key: DB_PATH
+        value: /data/qalibre.sqlite
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: SESSION_ENC_KEY
+        sync: false
+      - key: SOLVER_PRIVATE_KEY
+        sync: false
+      - key: SPONSOR_SIGNER_PRIVATE_KEY
+        sync: false
+      - key: RELAYER_PRIVATE_KEY
+        sync: false
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

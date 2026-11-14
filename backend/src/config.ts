@@ -22,6 +22,8 @@ function loadEnvFile(): Record<string, string> {
 }
 
 const file = loadEnvFile();
+/** The contract owner key. Used only by local admin scripts (fee payouts, relayer top-ups); never on a server. */
+export const deployerKey = (process.env.DEPLOYER_PRIVATE_KEY || file.DEPLOYER_PRIVATE_KEY || undefined) as Hex | undefined;
 function env(name: string, fallback?: string): string {
   const v = process.env[name] ?? file[name] ?? fallback;
   if (v === undefined || v === '') throw new Error(`missing config: ${name}`);
@@ -34,7 +36,9 @@ export const config = {
   miniAppUrl: process.env.MINIAPP_URL ?? file.MINIAPP_URL ?? '',
   port: Number(env('PORT', '8787')),
   /** Relayer pays gas for account creation and test-token drips (the deployer on testnet). */
-  relayerKey: env('DEPLOYER_PRIVATE_KEY') as Hex,
+  // A dedicated hot key with no admin rights. The deployer (contract owner) key is only a local fallback and must
+  // never be configured on a hosted server.
+  relayerKey: (process.env.RELAYER_PRIVATE_KEY || file.RELAYER_PRIVATE_KEY || env('DEPLOYER_PRIVATE_KEY')) as Hex,
   solverKey: env('SOLVER_PRIVATE_KEY') as Hex,
   sponsorKey: env('SPONSOR_SIGNER_PRIVATE_KEY') as Hex,
   sessionEncKey: env('SESSION_ENC_KEY'),

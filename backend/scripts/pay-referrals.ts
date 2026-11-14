@@ -8,7 +8,7 @@
  */
 import { formatUnits, type Address } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { config, TOKENS } from '../src/config.js';
+import { config, TOKENS, deployerKey } from '../src/config.js';
 import { openDb } from '../src/db.js';
 import { erc20Abi, publicClient, walletClient, waitForConfirmations } from '../../solver/src/chain.js';
 
@@ -16,7 +16,8 @@ const MIN_PAYOUT = 10n ** 14n; // 0.0001 QMS: smaller balances roll over to next
 const pay = process.argv.includes('--pay');
 const db = openDb(config.dbPath);
 const client = publicClient();
-const payer = privateKeyToAccount(config.relayerKey);
+if (!deployerKey) throw new Error('DEPLOYER_PRIVATE_KEY is not set: payouts come from the fee wallet.');
+const payer = privateKeyToAccount(deployerKey);
 
 const due = db.unpaidRewards();
 if (due.length === 0) {
