@@ -128,7 +128,16 @@ async function settle(db: Db, id: string, ms = 25_000): Promise<OrderRow | undef
 function buildServer(deps: AgentDeps, key: AgentKeyRow) {
   const { db, svc } = deps;
   const tgId = key.tg_id;
-  const server = new McpServer({ name: 'qalibre', version: '1.0.0' }, {
+  const server = new McpServer({
+    name: 'qalibre',
+    title: 'Qalibre',
+    version: '1.0.0',
+    websiteUrl: 'https://qalibre.app/agents',
+    icons: [
+      { src: 'https://app.qalibre.app/icon-512.png', mimeType: 'image/png', sizes: ['512x512'] },
+      { src: 'https://app.qalibre.app/icon-192.png', mimeType: 'image/png', sizes: ['192x192'] },
+    ],
+  }, {
     instructions:
       'Qalibre trades tokens on the QMS network from the user\'s own self-custody wallet. You can read the wallet, check a token, quote and, if this key allows it, buy and sell. ' +
       'You cannot withdraw or send funds. Buys are limited to tokens the user has approved, within per-trade and daily caps, and every trade settles at no worse than a direct swap. ' +

@@ -25,7 +25,7 @@ jobs:
       - name: Package (published files only)
         run: |
           mkdir -p _site
-          cp site/*.html site/*.css site/*.js site/robots.txt site/sitemap.xml _site/
+          cp site/*.html site/*.css site/*.js site/robots.txt site/sitemap.xml site/favicon.ico _site/
           cp -r site/assets site/fonts _site/
           rm -f _site/_*.html
       - uses: actions/configure-pages@v5

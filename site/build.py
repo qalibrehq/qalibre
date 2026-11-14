@@ -66,7 +66,9 @@ def page(title: str, description: str, nav: str, body: str, slug: str) -> str:
   <meta property="og:url" content="{url}" />
   <meta property="og:image" content="{SITE}/assets/fill.png" />
   <meta name="twitter:card" content="summary_large_image" />
-  <link rel="icon" href="/assets/icon-512.png" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" href="/assets/icon-512.png" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
   <script type="application/ld+json">{{"@context":"https://schema.org","@type":"Organization","name":"Qalibre","url":"{SITE}","logo":"{SITE}/assets/icon-512.png","email":"hello@qalibre.app","sameAs":["{X_URL}","{TG_URL}","{GITHUB}"]}}</script>
   <link rel="preload" href="/fonts/Inter-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
