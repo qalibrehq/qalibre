@@ -209,9 +209,11 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
     } else if (s.tradable && !s.token.verified) {
       if (!ctx.buyAllowed || !ctx.canSell) {
         // One signed approval on the phone covers buying and selling this token.
-        extra.push(`To trade ${esc(s.token.symbol)} from chat, approve it once with your PIN. Qalibre can then buy and sell it for you, within your QMS limits.`);
+        extra.push(`To trade ${esc(s.token.symbol)} from chat, approve it once with your PIN. Trading new tokens often? Fast mode skips approvals for every token that passes the check.`);
         const url = appUrl({ approve: s.token.address });
-        if (url) kb.push([{ text: `Approve ${s.token.symbol}`, web_app: { url } }]);
+        const fast = appUrl({ screen: 'fast' });
+        const row = [url && { text: `Approve ${s.token.symbol}`, web_app: { url } }, fast && { text: 'Fast mode', web_app: { url: fast } }].filter(Boolean);
+        if (row.length) kb.push(row as Keyboard[number]);
       } else {
         const pool = await poolOf(s.token).catch(() => null);
         const sizes = pool ? buySizes(ctx.qmsSpendable, ctx.qmsPerTrade, pool.qmsReserve) : [];

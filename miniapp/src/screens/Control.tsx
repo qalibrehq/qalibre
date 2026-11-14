@@ -31,7 +31,7 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
-export function Control({ me, nav, toast, refresh, backupNow = false }: { me: Me; nav: Nav; toast: (m: string) => void; refresh: () => void; backupNow?: boolean }) {
+export function Control({ me, nav, toast, refresh, backupNow = false, fastNow = false }: { me: Me; nav: Nav; toast: (m: string) => void; refresh: () => void; backupNow?: boolean; fastNow?: boolean }) {
   const [backup, setBackup] = useState<'closed' | 'pin' | 'shown'>('closed');
   const [permission, setPermission] = useState<'off' | 'on' | null>(null);
   const [fast, setFast] = useState<'choose' | 'on' | 'off' | null>(null);
@@ -52,6 +52,8 @@ export function Control({ me, nav, toast, refresh, backupNow = false }: { me: Me
 
   useEffect(() => {
     if (backupNow) void startBackup();
+    // Opened from a chat card's "Fast mode" button: go straight to the Fast mode screen (if it is not already on).
+    if (fastNow && me.session?.active && !me.session.fastMode) setFast('choose');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function startBackup() {

@@ -104,6 +104,8 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
         '',
         '<b>Open the Wallet only when your PIN is needed:</b> creating your wallet, approving a new token once, changing limits, sending money out, or turning trading off.',
         '',
+        '<b>Fast mode.</b> Trading new tokens often? Turn it on in your Wallet to buy any token that passes the check without approving each one. Your daily QMS limit is the most it can spend.',
+        '',
         '<b>Price.</b> Your order joins a batch. If other traders take the other side, you are matched at one fair price and pay less. If not, it goes to QWAP at exactly its price and Qalibre charges nothing. The contract never lets a trade settle below a direct swap.',
         '',
         '<b>In groups.</b> Add Qalibre to a group and it warns everyone when someone posts a scam token. Nobody can trade from a group.',

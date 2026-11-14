@@ -14,7 +14,7 @@ import { Profile } from './screens/Profile';
 import { Wordmark } from './ui/Brand';
 import { Splash } from './ui/Splash';
 
-type Route = { name: 'home' } | { name: 'trade'; side: 'buy' | 'sell'; token?: TokenRef } | { name: 'receipt'; orderId: string } | { name: 'activity' } | { name: 'control'; backup?: boolean } | { name: 'limits' } | { name: 'send' } | { name: 'approve'; token: string; back?: 'trade' } | { name: 'profile' };
+type Route = { name: 'home' } | { name: 'trade'; side: 'buy' | 'sell'; token?: TokenRef } | { name: 'receipt'; orderId: string } | { name: 'activity' } | { name: 'control'; backup?: boolean; fast?: boolean } | { name: 'limits' } | { name: 'send' } | { name: 'approve'; token: string; back?: 'trade' } | { name: 'profile' };
 export type Nav = (name: Route['name'], params?: Record<string, string>) => void;
 
 export function App() {
@@ -27,6 +27,7 @@ export function App() {
     const approve = q.get('approve');
     if (approve && /^0x[0-9a-fA-F]{40}$/.test(approve)) return { name: 'approve', token: approve };
     const screen = q.get('screen');
+    if (screen === 'fast') return { name: 'control', fast: true };
     if (screen === 'control' || screen === 'limits' || screen === 'activity' || screen === 'profile') return { name: screen };
     return { name: 'home' };
   });
@@ -131,7 +132,7 @@ export function App() {
       {route.name === 'trade' && <Trade me={me} nav={nav} side={route.side} token={route.token} toast={toast} refresh={() => void refresh()} />}
       {route.name === 'receipt' && <Receipt me={me} orderId={route.orderId} nav={nav} />}
       {route.name === 'activity' && <Activity me={me} nav={nav} />}
-      {route.name === 'control' && <Control me={me} backupNow={route.backup} nav={nav} toast={toast} refresh={() => void refresh()} />}
+      {route.name === 'control' && <Control me={me} backupNow={route.backup} fastNow={route.fast} nav={nav} toast={toast} refresh={() => void refresh()} />}
       {route.name === 'limits' && <Limits me={me} nav={nav} toast={toast} refresh={() => void refresh()} />}
       {route.name === 'profile' && <Profile me={me} nav={nav} toast={toast} />}
       {route.name === 'approve' && <Approve me={me} token={route.token} back={route.back} nav={nav} />}
