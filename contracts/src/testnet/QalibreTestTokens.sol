@@ -60,3 +60,11 @@ contract QalibreTestTaxed is ERC20 {
         super._update(from, to, value);
     }
 }
+
+/// A plain token: fixed supply minted once, no owner, no special powers. The counterpart to the three above,
+/// showing what the safety check lets through. Almost all of the supply goes into the pool at launch.
+contract QalibreTestPlain is ERC20 {
+    constructor(uint256 supply) ERC20("Qalibre Test Plain (testnet)", "QTPLAIN") {
+        _mint(msg.sender, supply);
+    }
+}

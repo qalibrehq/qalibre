@@ -5,7 +5,8 @@ import { fmtSig } from './chat.js';
 import type { Service } from './service.js';
 import type { Chat } from './chat.js';
 import type { Social } from './social.js';
-import { AGENT_KEY_DAYS, issueAgentKey } from './agent.js';
+import { AGENT_KEY_DAYS, hashKey, issueAgentKey } from './agent.js';
+import { detectSecret, GROUP_WARNING, SECRET_WARNING } from './secrets.js';
 
 interface Update {
   update_id: number;
@@ -276,6 +277,15 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
     if (u.inline_query) return chat.onInlineQuery(u.inline_query);
     const msg = u.message;
     if (!msg?.text || !msg.from || msg.from.is_bot) return;
+    // A secret pasted by mistake is deleted before anything else reads it.
+    const secret = detectSecret(msg.text);
+    if (secret) {
+      await bot.call('deleteMessage', { chat_id: msg.chat.id, message_id: msg.message_id }).catch(() => undefined);
+      for (const k of secret.agentKeys) db.revokeExposedAgentKey(hashKey(k));
+      if (msg.chat.type === 'private') return void (await bot.sendMessage(msg.chat.id, SECRET_WARNING[secret.kind]));
+      // In groups the bot can delete only if an admin allowed it; the warning goes out either way.
+      return void (await bot.sendMessage(msg.chat.id, GROUP_WARNING).catch(() => undefined));
+    }
     if (msg.chat.type !== 'private') return social.onGroupMessage(msg.chat.id, msg.text, msg.message_id, msg.from.id);
     const id = msg.from.id;
     db.upsertUser(id, msg.from.first_name ?? null);

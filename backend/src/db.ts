@@ -255,6 +255,10 @@ export function openDb(path: string) {
     revokeAgentKey(id: string, tgId: number): boolean {
       return Number(db.prepare('UPDATE agent_keys SET revoked_at = ? WHERE id = ? AND tg_id = ? AND revoked_at IS NULL').run(now(), id, tgId).changes) === 1;
     },
+    /** An exposed key (pasted into a chat) is revoked whoever owns it. */
+    revokeExposedAgentKey(hash: string): boolean {
+      return Number(db.prepare('UPDATE agent_keys SET revoked_at = ? WHERE key_hash = ? AND revoked_at IS NULL').run(now(), hash).changes) === 1;
+    },
     revokeAllAgentKeys(tgId: number): number {
       return Number(db.prepare('UPDATE agent_keys SET revoked_at = ? WHERE tg_id = ? AND revoked_at IS NULL').run(now(), tgId).changes);
     },
