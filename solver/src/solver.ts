@@ -157,10 +157,14 @@ export async function planBatch(
 async function applyNetworkFees(client: PublicClient, dep: Deployment, solver: LocalAccount, plan: BatchPlan) {
   const [tokens, prices, trades, interactions] = plan.args;
   const strip = (t: TradeArg) => ({ sellTokenIndex: t.sellTokenIndex, buyTokenIndex: t.buyTokenIndex, order: t.order, signature: t.signature, networkFee: t.networkFee });
-  const gas = await client.estimateContractGas({ address: dep.settlement, abi: QalibreSettlementAbi, functionName: 'settle', args: [tokens, prices, trades.map(strip), interactions] as never, account: solver });
+  // Gas estimate and base fee are independent round trips: fetched together.
   // At cost: the block's base fee, which is what the batch actually pays (we add only a negligible tip).
   // Deliberately not eth_gasPrice, which suggests about 2x the base fee and would overcharge users.
-  const baseFee = (await client.getBlock({ blockTag: 'latest' })).baseFeePerGas ?? 0n;
+  const [gas, block] = await Promise.all([
+    client.estimateContractGas({ address: dep.settlement, abi: QalibreSettlementAbi, functionName: 'settle', args: [tokens, prices, trades.map(strip), interactions] as never, account: solver }),
+    client.getBlock({ blockTag: 'latest' }),
+  ]);
+  const baseFee = block.baseFeePerGas ?? 0n;
   // eth_estimateGas runs ~30% above gas actually used (measured: 601k used), so charge 70% of the estimate:
   // users pay at cost or less, and Qalibre absorbs any difference.
   const perTradeWei = (gas * baseFee * 70n) / 100n / BigInt(Math.max(1, trades.length));
@@ -190,19 +194,25 @@ export async function simulateBatch(client: PublicClient, dep: Deployment, solve
 /** Simulate against the current chain state, then submit and wait for confirmations. */
 export async function executeBatch(client: PublicClient, dep: Deployment, solver: LocalAccount, plan: BatchPlan, confirmations?: bigint): Promise<BatchResult> {
   const trades = await applyNetworkFees(client, dep, solver, plan);
-  const { request } = await client.simulateContract({
+  const call = {
     address: dep.settlement,
     abi: QalibreSettlementAbi,
     functionName: 'settle',
     args: [plan.args[0], plan.args[1], trades, plan.args[3]] as never,
     account: solver,
-  });
+  } as const;
+  // Simulate, read the base fee and estimate gas at the same time: each is a round trip to the RPC (~0.75 s on
+  // QMS testnet) and none depends on another. Sequentially they cost about 2 s of every trade.
+  const [{ request }, block, estimate] = await Promise.all([
+    client.simulateContract(call),
+    client.getBlock({ blockTag: 'latest' }),
+    client.estimateContractGas(call as never),
+  ]);
   // Explicit fees: a negligible tip keeps the real cost at the base fee we charged against.
-  const base = (await client.getBlock({ blockTag: 'latest' })).baseFeePerGas ?? 0n;
+  const base = block.baseFeePerGas ?? 0n;
   // Explicit gas limit with headroom. Sending with the bare estimate ran out of gas live (QMS testnet, a sell
   // that touched cold token storage: gasUsed == gasLimit). Unused gas is refunded, so the margin costs nothing,
   // and the network fee users pay is computed separately from the estimate (applyNetworkFees).
-  const estimate = await client.estimateContractGas({ ...(request as object), account: solver } as never);
   const gas = (estimate * 13n) / 10n + 50_000n;
   const hash = await walletClient(solver).writeContract({ ...(request as object), gas, maxPriorityFeePerGas: 1_000n, maxFeePerGas: base * 2n + 1_000n } as never);
   const receipt = await waitForConfirmations(client, hash, confirmations);

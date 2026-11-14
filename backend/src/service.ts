@@ -459,7 +459,9 @@ export function createService(db: Db, notify: Notify) {
         for (let sub = 0; sub < 4 && queue.length > 0; sub++) {
           let done = false;
           for (let attempt = 0; attempt < 3 && !done; attempt++) {
+            const tPlan = Date.now();
             const plan = await planBatch(client, dep, queue, fees);
+            const planMs = Date.now() - tPlan;
             if (!plan) {
               console.warn(`batch: no feasible plan for ${queue.length} order(s) on ${pairKey(rows[0]!)}; they wait for the price to come back or expire`);
               queue = [];
@@ -467,7 +469,11 @@ export function createService(db: Db, notify: Notify) {
             }
             try {
               // Report the fill as soon as it is in a block; finality is tracked in the background.
+              const tSend = Date.now();
               const r = await executeBatch(client, dep, solver, plan, 1n);
+              // Where the time goes, per batch: our planning, then sending plus waiting for a QMS block.
+              const waited = queue.map((q) => Date.now() - (db.getOrder(q.id)?.created_ms ?? Date.now()));
+              console.log(`batch ${r.hash.slice(0, 10)}: ${queue.length} order(s), plan ${planMs}ms, send+block ${Date.now() - tSend}ms, order-to-fill ${Math.max(...waited)}ms`);
               const batchId = db.insertBatch({ tx: r.hash, block: Number(r.block), trades: r.receipts.length, mtx: plan.matrixMarket });
               const byDigest = new Map(queue.map((q) => [hashTypedData({ domain: orderDomain(dep.settlement), types: orderTypes, primaryType: 'Order', message: q.order }).toLowerCase(), q]));
               for (const rec of r.receipts) {
