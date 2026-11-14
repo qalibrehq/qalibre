@@ -10,8 +10,8 @@
     <section class="section tight">
       <div class="wrap">
         <ol class="steps" data-reveal>
-          <li style="--d:0"><span class="n">1</span><b>Create a key</b><p>In <a href="https://t.me/QalibreBot">@QalibreBot</a>, send <code>/agent</code> and choose a trading or read-only key. It is shown once.</p></li>
-          <li style="--d:1"><span class="n">2</span><b>Connect your agent</b><p>Paste one setup line into your agent, with your key in place of <code>YOUR_KEY</code>.</p></li>
+          <li style="--d:0"><span class="n">1</span><b>Add Qalibre</b><p>In Claude, add a custom connector with the address below. Other agents use a key from <code>/agent</code> in <a href="https://t.me/QalibreBot">@QalibreBot</a>.</p></li>
+          <li style="--d:1"><span class="n">2</span><b>Approve in Telegram</b><p>Check the pairing code matches, then allow trading or read only. You can revoke it any time.</p></li>
           <li style="--d:2"><span class="n">3</span><b>Ask</b><p>Talk to it normally. Every trade it makes is announced to you in Telegram.</p></li>
         </ol>
       </div>
@@ -20,7 +20,9 @@
     <section class="section tight">
       <div class="wrap narrow-wrap">
         <h2 class="h3">Setup</h2>
-        <p class="body">Claude Code</p>
+        <p class="body">Claude, on the web, desktop or phone: open Settings, then Connectors, then Add custom connector, and paste this address. Tap Connect and approve in Telegram. There is no key to copy.</p>
+        <div class="code"><pre><code>https://app.qalibre.app/mcp</code></pre><button type="button" class="copy" data-copy>Copy</button></div>
+        <p class="body">Claude Code, or any client that takes a key</p>
         <div class="code"><pre><code>claude mcp add --transport http qalibre https://app.qalibre.app/mcp --header "Authorization: Bearer YOUR_KEY"</code></pre><button type="button" class="copy" data-copy>Copy</button></div>
         <p class="body">Cursor, VS Code and other MCP clients</p>
         <div class="code json"><pre><code>{
