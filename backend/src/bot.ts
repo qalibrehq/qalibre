@@ -219,9 +219,15 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
     if (!name) return void (await bot.answer(q.id, 'This request has expired or was already answered.', true));
     await bot.answer(q.id, allow ? 'Connected' : 'Declined');
     const text = allow
-      ? `<b>${esc(name)} is connected</b>  ·  ${m[1] === 't' ? 'can trade' : 'read-only'}
-Go back to your AI app; it finishes by itself. Revoke any time with /agent.`
-      : `<b>Declined.</b> ${esc(name)} was not connected.`;
+      ? [
+          `<b>${esc(name)} is connected to your wallet.</b>`,
+          m[1] === 't'
+            ? 'It can check tokens and trade within your limits, and I\'ll message you about every trade it makes.'
+            : 'It can see your wallet and check tokens, but it cannot trade.',
+          '',
+          `You can head back to ${esc(name)} now. To disconnect it, send /agent.`,
+        ].join('\n')
+      : `<b>Declined.</b> ${esc(name)} has not been connected.`;
     if (q.message?.message_id) await bot.editMessage(tgId, q.message.message_id, text).catch(() => bot.sendMessage(tgId, text));
     else await bot.sendMessage(tgId, text);
   }
@@ -235,7 +241,8 @@ Go back to your AI app; it finishes by itself. Revoke any time with /agent.`
     const sent = (await bot.sendMessage(
       tgId,
       [
-        `<b>${esc(label)} is ready</b>  ·  ${canTrade ? 'can trade' : 'read-only'}`,
+        `<b>Here is the key for ${esc(label)}.</b>`,
+        canTrade ? 'It can check tokens and trade within your limits.' : 'It can see your wallet and check tokens, but it cannot trade.',
         '',
         `<code>${secret}</code>`,
         '',
