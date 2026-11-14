@@ -1,7 +1,7 @@
 import { keccak256, toBytes } from 'viem';
 
 /**
- * A token's icon: the same identity the chat cards use (backend/src/logos.ts). QMS and USDC have quiet marks;
+ * A token's icon: the same identity the chat cards use (backend/src/logos.ts). QMS and USDC show their official marks;
  * every other token gets its emblem, generated from its address, so the same token looks the same everywhere.
  */
 const TONES = ['#2F5E7A', '#5C4A86', '#8A6A2E', '#2E6E5E', '#4A5596', '#5E6B2C', '#3F6470', '#6E5A3A', '#3D4E7A', '#4E6E3A'];
@@ -17,14 +17,8 @@ export function TokenIcon({ address, size = 40 }: { address: string; size?: numb
   const a = address.toLowerCase();
   const r = size / 2;
   if (a === QMS || a === USDC) {
-    const qms = a === QMS;
-    return (
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-        <circle cx={r} cy={r} r={r} fill={qms ? '#111214' : '#2E5C8A'} />
-        <circle cx={r} cy={r} r={r - 0.5} fill="none" stroke="var(--rule-strong)" strokeWidth="1" />
-        <text x={r} y={r + size * 0.17} textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontWeight="600" fontSize={size * 0.46} fill="#F6F4EF">{qms ? 'Q' : '$'}</text>
-      </svg>
-    );
+    // The official marks (brand/third-party/NOTICE.md), served from our own origin.
+    return <img src={a === QMS ? '/tokens/qms.svg' : '/tokens/usdc.svg'} width={size} height={size} alt="" aria-hidden="true" style={{ display: 'block', borderRadius: '50%', flex: 'none' }} />;
   }
   const b = bytes(a);
   const base = TONES[b[0]! % TONES.length];

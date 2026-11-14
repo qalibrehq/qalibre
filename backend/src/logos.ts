@@ -9,7 +9,11 @@
  * Remote images are untrusted: only PNG, JPEG and SVG are accepted, capped at 256 KB, fetched with a timeout,
  * and embedded as data URIs (the renderer never fetches anything itself, and runs no scripts).
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { Resvg } from '@resvg/resvg-js';
 import { keccak256, toBytes, type Address } from 'viem';
+import { ROOT, TOKENS } from './config.js';
 
 const EXPLORER_API = 'https://testnet.qmsscan.io/api/v2';
 const MAX_BYTES = 256 * 1024;
@@ -75,8 +79,22 @@ async function fetchImage(url: string): Promise<string | null> {
 }
 
 /** A real logo for this token as a data URI, or null when none is published. Cached for 6 hours. */
+/** The official QMS and USDC marks (brand/third-party/NOTICE.md), rendered once to PNG for the share cards. */
+const OFFICIAL: Record<string, string> = {};
+function official(key: string): string | null {
+  const file = key === TOKENS.WQMS.toLowerCase() ? 'qms.svg' : key === TOKENS.USDC.toLowerCase() ? 'usdc.svg' : null;
+  if (!file) return null;
+  if (!OFFICIAL[key]) {
+    const svg = readFileSync(join(ROOT, 'backend', 'assets', 'tokens', file), 'utf8');
+    OFFICIAL[key] = 'data:image/png;base64,' + Buffer.from(new Resvg(svg, { fitTo: { mode: 'width', value: 192 } }).render().asPng()).toString('base64');
+  }
+  return OFFICIAL[key]!;
+}
+
 export async function tokenLogo(address: Address): Promise<string | null> {
   const key = address.toLowerCase();
+  const own = official(key);
+  if (own) return own;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.uri;
   let uri: string | null = null;
