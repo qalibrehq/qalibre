@@ -1,0 +1,64 @@
+<!-- title: AI agents | description: Connect Claude or any MCP agent to Qalibre. It can check tokens and trade inside your wallet, within limits enforced by our contract and server. | nav: agents -->
+    <section class="page-hero">
+      <div class="wrap">
+        <p class="eyebrow">AI agents</p>
+        <h1 class="rv"><span>Let your AI trade.</span><span class="g">Within rules it can’t break.</span></h1>
+        <p class="lede">Connect Claude or any agent that speaks MCP. It can check tokens and trade inside your wallet. The limits are enforced by our contract and our server, never by trusting the AI.</p>
+      </div>
+    </section>
+
+    <section class="section tight">
+      <div class="wrap">
+        <ol class="steps" data-reveal>
+          <li style="--d:0"><span class="n">1</span><b>Create a key</b><p>In <a href="https://t.me/QalibreBot">@QalibreBot</a>, send <code>/agent</code> and choose a trading or read-only key. It is shown once.</p></li>
+          <li style="--d:1"><span class="n">2</span><b>Connect your agent</b><p>Paste one setup line into your agent, with your key in place of <code>YOUR_KEY</code>.</p></li>
+          <li style="--d:2"><span class="n">3</span><b>Ask</b><p>Talk to it normally. Every trade it makes is announced to you in Telegram.</p></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section tight">
+      <div class="wrap narrow-wrap">
+        <h2 class="h3">Setup</h2>
+        <p class="body">Claude Code</p>
+        <div class="code"><pre><code>claude mcp add --transport http qalibre https://app.qalibre.app/mcp --header "Authorization: Bearer YOUR_KEY"</code></pre><button type="button" class="copy" data-copy>Copy</button></div>
+        <p class="body">Cursor, VS Code and other MCP clients</p>
+        <div class="code json"><pre><code>{
+  "mcpServers": {
+    "qalibre": {
+      "url": "https://app.qalibre.app/mcp",
+      "headers": { "Authorization": "Bearer YOUR_KEY" }
+    }
+  }
+}</code></pre><button type="button" class="copy" data-copy>Copy</button></div>
+
+        <h2 class="h3">Then ask</h2>
+        <div class="code soft"><pre><code>Check my Qalibre wallet and tell me what I hold.</code></pre><button type="button" class="copy" data-copy>Copy</button></div>
+        <div class="code soft"><pre><code>Check this token on Qalibre and explain the risks: 0x…</code></pre><button type="button" class="copy" data-copy>Copy</button></div>
+        <div class="code soft"><pre><code>If it checks out, buy 0.2 QMS of it on Qalibre and show me the result.</code></pre><button type="button" class="copy" data-copy>Copy</button></div>
+      </div>
+    </section>
+
+    <section class="section tight">
+      <div class="wrap two-col" data-reveal>
+        <article class="tile" style="--d:0">
+          <b>What an agent can do</b>
+          <ul class="ticks">
+            <li>Read your balances, holdings and orders</li>
+            <li>Run the safety check on any token</li>
+            <li>Quote a trade at the live price</li>
+            <li>Buy tokens you have approved, and sell back to QMS</li>
+          </ul>
+        </article>
+        <article class="tile" style="--d:1">
+          <b>What it can never do</b>
+          <ul class="ticks no">
+            <li>Withdraw or send money out of your wallet</li>
+            <li>Buy a token you have not approved, or one rated high risk</li>
+            <li>Spend more than 1 QMS a trade or 5 QMS a day</li>
+            <li>Settle a trade below a direct swap</li>
+          </ul>
+        </article>
+      </div>
+      <p class="note center narrow">Revoke a key at any time with <code>/agent</code>. Keys expire after 90 days, and we store only a fingerprint of each one, never the key itself.</p>
+    </section>

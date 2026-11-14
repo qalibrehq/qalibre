@@ -98,7 +98,7 @@ def page(title: str, description: str, nav: str, body: str, slug: str) -> str:
   <footer class="foot">
     <div class="wrap foot-grid">
       <div class="foot-brand">{WORDMARK.format(w=96)}<p>Every trade, protected.</p>{SOCIAL}</div>
-      <div><b>Product</b><a href="https://t.me/QalibreBot">Open in Telegram</a><a href="/fees">Fees</a><a href="/roadmap">Roadmap</a><a href="/faq">FAQ</a></div>
+      <div><b>Product</b><a href="https://t.me/QalibreBot">Open in Telegram</a><a href="/agents">AI agents</a><a href="/fees">Fees</a><a href="/roadmap">Roadmap</a><a href="/faq">FAQ</a></div>
       <div><b>Trust</b><a href="/security">Security</a><a href="{GITHUB}">Source code</a><a href="/security#limits">Known limitations</a><a href="/recover">Recover a wallet</a></div>
       <div><b>Legal</b><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/risk">Risk notice</a></div>
     </div>

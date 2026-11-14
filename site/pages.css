@@ -273,3 +273,36 @@ button.rc-wallet .rc-wend { color: var(--green); background: rgba(15, 77, 58, 0.
 .social a:hover { color: var(--green); box-shadow: inset 0 0 0 1px rgba(15, 77, 58, 0.35); }
 .social a:active { transform: scale(0.96); }
 .social a:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+/* AI agents page */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.steps li { background: var(--white); border-radius: 22px; padding: 26px 24px; }
+.steps .n { display: inline-flex; width: 30px; height: 30px; border-radius: 15px; align-items: center; justify-content: center; background: var(--green); color: #f6f4ef; font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+.steps b { display: block; font-size: 18px; letter-spacing: -0.01em; }
+.steps p { margin: 8px 0 0; color: var(--graphite); font-size: 15px; line-height: 1.6; }
+.page-agents code { font: 500 0.92em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--paper-2); padding: 1px 6px; border-radius: 6px; }
+.h3 { margin: 44px 0 6px; font-size: 22px; letter-spacing: -0.02em; font-weight: 600; }
+.h3:first-child { margin-top: 0; }
+.code { position: relative; margin: 10px 0 18px; background: var(--ink); border-radius: 16px; }
+.code pre { margin: 0; padding: 18px 92px 18px 20px; color: #e9e6df; font: 500 13.5px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.page-agents .code code { background: none; padding: 0; font: inherit; }
+.code.soft { background: var(--white); box-shadow: inset 0 0 0 1px var(--paper-2); }
+.code.soft pre { color: var(--ink); white-space: pre-wrap; font-family: inherit; font-size: 15px; }
+.copy { position: absolute; top: 12px; right: 12px; height: 32px; padding: 0 12px; border-radius: 9px; border: 0; cursor: pointer; font: 600 13px inherit; font-family: inherit; color: #e9e6df; background: rgba(246, 244, 239, 0.12); transition: background 0.2s; }
+.copy:hover { background: rgba(246, 244, 239, 0.2); }
+.code.soft .copy { color: var(--ink); background: var(--paper); }
+.code.soft .copy:hover { background: var(--paper-2); }
+.two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ticks { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 10px; }
+.ticks li { position: relative; padding-left: 22px; color: var(--graphite); font-size: 15px; line-height: 1.55; }
+.ticks li::before { content: ''; position: absolute; left: 2px; top: 0.6em; width: 8px; height: 8px; border-radius: 4px; background: var(--green); }
+.ticks.no li::before { background: #a33a2b; }
+@media (max-width: 880px) {
+  .steps, .two-col { grid-template-columns: minmax(0, 1fr); }
+}
+.faq code { font: 500 0.92em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--paper-2); padding: 1px 6px; border-radius: 6px; }
+.page-agents .section.tight + .section.tight { padding-top: 0; }
+.page-agents .steps + * { margin-top: 0; }
+/* Structured config keeps its shape and scrolls inside its box; one-line commands wrap. */
+.code.json pre { white-space: pre; overflow-wrap: normal; overflow-x: auto; scrollbar-width: thin; scrollbar-color: rgba(246, 244, 239, 0.25) transparent; }
+@media (max-width: 520px) { .code:not(.soft) pre { font-size: 12.5px; padding-right: 20px; padding-top: 50px; } }

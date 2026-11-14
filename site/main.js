@@ -225,6 +225,22 @@
     else new IntersectionObserver((es, o) => { if (es[0].isIntersecting) { light(); o.disconnect(); } }, { threshold: 0.35 }).observe(grid);
   }
 
+  // ---------- Copy buttons on code blocks ----------
+  document.querySelectorAll('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const text = btn.parentElement.querySelector('code').textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = 'Copied';
+      } catch {
+        btn.textContent = 'Press Ctrl+C';
+        const r = document.createRange(); r.selectNodeContents(btn.parentElement.querySelector('code'));
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      }
+      setTimeout(() => (btn.textContent = 'Copy'), 1600);
+    });
+  });
+
   // ---------- Live numbers: real data only. No API configured or unreachable: the band is removed. ----------
   const band = document.querySelector('.stats');
   const api = document.body.dataset.api;
