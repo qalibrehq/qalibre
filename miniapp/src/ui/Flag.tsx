@@ -2,9 +2,9 @@ import type { Safety } from '../api';
 
 type Finding = Safety['findings'][number];
 
-/** One severity scale across the product: the same dot colours as the chat cards, and the same words as the chat. */
+/** One severity scale across the product: the same dot colours as the chat cards, and the same headings as the chat. */
 const DOT: Record<string, string> = { danger: 'var(--danger)', caution: 'var(--caution)', unknown: 'var(--muted)', pass: 'var(--green-text)' };
-const WORD: Record<string, string> = { danger: 'Risk', caution: 'Watch', unknown: 'Unchecked', pass: 'OK' };
+const WORD: Record<string, string> = { danger: 'Warning', caution: 'Worth knowing', unknown: 'Worth knowing', pass: 'Looks fine' };
 const ORDER: Record<string, number> = { danger: 0, caution: 1, unknown: 2, pass: 3 };
 
 /** Most serious first. */

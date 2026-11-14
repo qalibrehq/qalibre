@@ -53,10 +53,34 @@ export function fmtToken(v: bigint, decimals: number): string {
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const verdictLabel: Record<Safety['verdict'], string> = { ok: 'Low risk', caution: 'Some risk', high: 'High risk', blocked: 'Blocked' };
-// Severity in words, bold, the same scale as the coloured dots on cards and in the app. No emoji: Telegram text
-// cannot be coloured, and a plain word reads as more serious than a symbol.
-const mark: Record<string, string> = { danger: '<b>Risk</b>', caution: '<b>Watch</b>', unknown: '<b>Unchecked</b>', pass: '<b>OK</b>' };
-const SEVERITY_ORDER: Record<string, number> = { danger: 0, caution: 1, unknown: 2, pass: 3 };
+// Findings read as plain language grouped under headings a first-time user understands, most serious first.
+// No emoji and no codes: Telegram text cannot be coloured, so the heading carries the meaning.
+const GROUPS: { heading: string; levels: string[] }[] = [
+  { heading: 'Warning', levels: ['danger'] },
+  { heading: 'Worth knowing', levels: ['caution', 'unknown'] },
+  { heading: 'Looks fine', levels: ['pass'] },
+];
+const lowerFirst = (s: string) => (s ? s[0]!.toLowerCase() + s.slice(1) : s);
+
+/** One finding as a sentence: "Small pool: about $14 is available to trade…". Titles only when space is short. */
+function findingLine(f: { title: string; detail: string }, detail: boolean): string {
+  return detail && f.detail ? `${esc(f.title)}: ${esc(lowerFirst(f.detail))}` : esc(f.title);
+}
+
+/** The findings block: a heading per group, problems with their explanation, passes on one quiet line. */
+function findingsBlock(findings: Safety['findings'], detail = true, maxProblems = 5): string[] {
+  const out: string[] = [];
+  for (const g of GROUPS) {
+    const items = findings.filter((f) => g.levels.includes(f.level));
+    if (!items.length) continue;
+    out.push(`<b>${g.heading}</b>`);
+    if (g.heading === 'Looks fine') out.push(items.slice(0, 4).map((f) => esc(f.title)).join('  ·  '));
+    else for (const f of items.slice(0, maxProblems)) out.push(findingLine(f, detail));
+    out.push('');
+  }
+  if (out.at(-1) === '') out.pop();
+  return out;
+}
 
 function appUrl(params: Record<string, string>): string | null {
   if (!config.miniAppUrl) return null;
@@ -78,7 +102,7 @@ function ago(ms: number): string {
  * The card's words. With an image (`caption`), price and pool are in the picture, so they are left out here.
  * Telegram captions are capped at 1024 characters: the least important lines go first if a caption runs long.
  */
-function cardText(s: Safety, extra: string[] = [], caption = false): string {
+export function cardText(s: Safety, extra: string[] = [], caption = false): string {
   const t = s.token;
   // Under an image the symbol, name, price and verdict are already in the picture: the caption starts with
   // the copyable address and carries only what the picture does not.
@@ -88,22 +112,17 @@ function cardText(s: Safety, extra: string[] = [], caption = false): string {
     if (s.liquidityUsd > 0) lines.push(`Pool    $${fmtSig(s.liquidityUsd, 3)}`);
     lines.push('');
   }
-  if (!caption) lines.push(s.verdict === 'blocked' ? `<b>Blocked.</b> ${esc(s.reason ?? '')}` : `<b>Safety ${s.score}/100</b>  ${verdictLabel[s.verdict]}`);
-  else lines.push('<b>What the check found</b>');
-  const shown = s.findings.filter((f) => f.level !== 'pass').sort((a, b) => SEVERITY_ORDER[a.level]! - SEVERITY_ORDER[b.level]!).slice(0, 5);
-  for (const f of shown) lines.push(`${mark[f.level]}  ·  ${esc(f.title)}`);
-  const passes = s.findings.filter((f) => f.level === 'pass').map((f) => f.title);
-  if (passes.length) lines.push(`${mark.pass}  ·  ${esc(passes.slice(0, 3).join(', '))}`);
-  if (extra.length) lines.push('', ...extra);
-  lines.push('', `<i>Checked ${ago(s.checkedAt)}. A safety check reduces risk; it cannot guarantee a token is safe.</i>`);
-  let text = lines.join('\n');
-  if (caption && text.length > 1000) {
-    // Drop the passes line, then trim findings to three, then shorten the closing note.
-    text = lines.filter((l) => !l.startsWith(mark.pass!)).join('\n');
-    if (text.length > 1000) text = text.replace(/<i>Checked .*<\/i>/, `<i>Checked ${ago(s.checkedAt)}.</i>`);
-    if (text.length > 1000) text = text.slice(0, 990) + '…';
+  if (!caption) lines.push(s.verdict === 'blocked' ? `<b>Blocked.</b> ${esc(s.reason ?? '')}` : `<b>Safety ${s.score}/100</b>  ${verdictLabel[s.verdict]}`, '');
+  const note = `<i>Checked ${ago(s.checkedAt)}. A safety check reduces risk; it cannot guarantee a token is safe.</i>`;
+  const build = (detail: boolean, max: number, longNote: boolean) =>
+    [...lines, ...findingsBlock(s.findings, detail, max), ...(extra.length ? ['', ...extra] : []), '', longNote ? note : `<i>Checked ${ago(s.checkedAt)}.</i>`].join('\n');
+  if (!caption) return build(true, 5, true);
+  // Captions are capped at 1024 characters: keep the explanations if they fit, then titles only, then fewer.
+  for (const [detail, max, longNote] of [[true, 5, true], [true, 3, true], [false, 5, true], [false, 3, false]] as const) {
+    const t = build(detail, max, longNote);
+    if (t.length <= 1000) return t;
   }
-  return text;
+  return build(false, 3, false).slice(0, 990) + '…';
 }
 
 /** The card image: blocked tokens lead with the warning; everything else with the token and its price. */
@@ -253,7 +272,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
         const s = await checkToken(token.address);
         if (s.verdict === 'high') {
           confirming.set(tgId, { token: token.address, side, amount, acceptImpact: Boolean(opts.acceptImpact), until: Date.now() + 120_000 });
-          await bot.sendMessage(tgId, `<b>Careful: ${esc(token.symbol)} scores ${s.score}/100.</b>\n${s.findings.filter((f) => f.level === 'caution' || f.level === 'danger').sort((a, b) => SEVERITY_ORDER[a.level]! - SEVERITY_ORDER[b.level]!).slice(0, 3).map((f) => `${mark[f.level]}  ·  ${esc(f.title)}`).join('\n')}\n\nStill want to buy it with ${trimUnits(amount, 18)} QMS?`, {
+          await bot.sendMessage(tgId, `<b>Careful: ${esc(token.symbol)} scores ${s.score}/100.</b>\n\n${findingsBlock(s.findings.filter((f) => f.level === 'caution' || f.level === 'danger'), true, 3).join('\n')}\n\nStill want to buy it with ${trimUnits(amount, 18)} QMS?`, {
             reply_markup: { inline_keyboard: [[{ text: 'Buy anyway', callback_data: 'y' }, { text: 'Cancel', callback_data: 'n' }]] },
           });
           return;

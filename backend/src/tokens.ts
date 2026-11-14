@@ -215,8 +215,8 @@ export async function checkToken(address: Address, opts: { fresh?: boolean } = {
       const liquidityUsd = (Number(pool.qmsReserve) / 1e18) * usdPerQms * 2;
       const usd = `$${Math.round(liquidityUsd).toLocaleString('en-US')}`;
       return liquidityUsd < 1_000
-        ? { priceQms: pool.priceQms, liquidityUsd, delta: -20, findings: [{ level: 'caution', title: 'Small pool', detail: `About ${usd} available to trade. Even small trades move the price.` }] }
-        : { priceQms: pool.priceQms, liquidityUsd, delta: 0, findings: [{ level: 'pass', title: 'Pool size', detail: `About ${usd} available to trade.` }] };
+        ? { priceQms: pool.priceQms, liquidityUsd, delta: -20, findings: [{ level: 'caution', title: 'Small pool', detail: `About ${usd} is available to trade, so even small trades move the price.` }] }
+        : { priceQms: pool.priceQms, liquidityUsd, delta: 0, findings: [{ level: 'pass', title: 'Pool size', detail: `About ${usd} is available to trade.` }] };
     } catch {
       return { priceQms: 0, liquidityUsd: 0, delta: 0, blocked: 'This token has no QWAP pool against QMS, so Qalibre cannot trade it.', findings: [{ level: 'danger', title: 'No pool against QMS', detail: 'There is nowhere to trade it.' }] };
     }
