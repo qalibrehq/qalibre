@@ -138,7 +138,11 @@ export function startApi(db: Db, svc: Service, owner: OwnerOps, extras: ApiExtra
     try {
       if (url.pathname === '/api/health') return send(res, 200, { ok: true, ...svc.batchStatus() }, origin);
       // Public: the savings counter, shown on the website and in /stats.
-      if (req.method === 'GET' && url.pathname === '/api/stats') return send(res, 200, await svc.publicStats(), origin);
+      // Public, aggregate numbers only (no user data): any site may read them, e.g. the homepage counters.
+      if (req.method === 'GET' && url.pathname === '/api/stats') {
+        res.setHeader('access-control-allow-origin', '*');
+        return send(res, 200, await svc.publicStats());
+      }
 
       // Everything else requires a verified Telegram user.
       const user: TelegramUser | null = verifyInitData(String(req.headers['x-telegram-init-data'] ?? ''), config.botToken);

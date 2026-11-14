@@ -233,6 +233,8 @@
     else fetch(`${api}/api/stats`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((s) => {
+        // Small numbers read as an empty room: the band appears only once there is real traction.
+        if (Number(s.trades) < 50 || Number(s.checked) < 50) return band.remove();
         const set = (key, v) => {
           const el = band.querySelector(`[data-stat="${key}"]`);
           const to = Number(v || 0);

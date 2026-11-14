@@ -61,7 +61,7 @@ def page(title: str, description: str, nav: str, body: str, slug: str) -> str:
   <link rel="stylesheet" href="/style.css" />
   <link rel="stylesheet" href="/pages.css" />
 </head>
-<body data-api="" class="page-{nav}">
+<body data-api="https://app.qalibre.app" class="page-{nav}">
   <a class="skip" href="#main">Skip to content</a>
   <header class="nav">
     <div class="wrap nav-in">
