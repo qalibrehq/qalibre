@@ -91,3 +91,58 @@ const header = `<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="500
 </svg>`;
 writeFileSync(join(out, 'x-header-1500x500.png'), png(header, 1500));
 console.log('written to', out);
+
+// Telegram channel launch image (1280x720): the line on the left, the mechanism on the right.
+{
+  let sd = 11;
+  const r2 = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  const CX = 1010, CY = 360;
+  const ls: string[] = [];
+  const ds: string[] = [];
+  for (let i = 0; i < 40; i++) {
+    const y0 = 30 + i * 16.5 + (r2() - 0.5) * 10;
+    const x0 = 640, c1x = 790 + r2() * 70, c2x = CX - 150 - r2() * 60, ey = CY + (r2() - 0.5) * 8;
+    const near = Math.abs(y0 - CY) / 360;
+    ls.push(`<path d="M${x0} ${y0.toFixed(1)} C${c1x.toFixed(0)} ${y0.toFixed(1)} ${c2x.toFixed(0)} ${ey.toFixed(1)} ${CX - 40} ${ey.toFixed(1)}" fill="none" stroke="${C.paper}" stroke-opacity="${(0.04 + (1 - near) * 0.17).toFixed(3)}" stroke-width="1.2"/>`);
+    if (r2() < 0.4) {
+      const t = 0.3 + r2() * 0.55, u = 1 - t;
+      const px = u ** 3 * x0 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t ** 3 * (CX - 40);
+      const py = u ** 3 * y0 + 3 * u * u * t * y0 + 3 * u * t * t * ey + t ** 3 * ey;
+      const buy = r2() < 0.5;
+      ds.push(`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${(2.2 + r2() * 1.4).toFixed(1)}" fill="${buy ? '#8FD4AE' : C.paper}" fill-opacity="${buy ? 0.75 : 0.5}"/>`);
+    }
+  }
+  const tk: string[] = [];
+  for (let k = 0; k < 60; k++) {
+    const a = (k / 60) * Math.PI * 2, r1 = 96, rr = k % 5 === 0 ? 110 : 103;
+    tk.push(`<line x1="${(CX + r1 * Math.cos(a)).toFixed(1)}" y1="${(CY + r1 * Math.sin(a)).toFixed(1)}" x2="${(CX + rr * Math.cos(a)).toFixed(1)}" y2="${(CY + rr * Math.sin(a)).toFixed(1)}" stroke="${C.brass}" stroke-opacity="${k % 5 === 0 ? 0.7 : 0.35}" stroke-width="${k % 5 === 0 ? 2 : 1.2}"/>`);
+  }
+  const chip = (x: number, label: string) => {
+    const w = Math.round(label.length * 10.6 + 44);
+    return { w, svg: `<rect x="${x}" y="520" width="${w}" height="42" rx="21" fill="${C.paper}" fill-opacity="0.08" stroke="${C.paper}" stroke-opacity="0.18"/><text x="${x + w / 2}" y="547" text-anchor="middle" font-family="Inter" font-weight="500" font-size="19" fill="${C.paper}" fill-opacity="0.92">${label}</text>` };
+  };
+  let cx = 96;
+  const chips = ['Safety check', 'Fast mode', 'AI agents'].map((l) => { const c = chip(cx, l); cx += c.w + 10; return c.svg; }).join('');
+  const launch = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <radialGradient id="g" cx="${CX}" cy="${CY}" r="700" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1B6B52"/><stop offset="0.5" stop-color="${C.green}"/><stop offset="1" stop-color="#0A3528"/></radialGradient>
+    <radialGradient id="h" cx="${CX}" cy="${CY}" r="130" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="${C.brass}" stop-opacity="0.24"/><stop offset="1" stop-color="${C.brass}" stop-opacity="0"/></radialGradient>
+    <linearGradient id="fade" x1="770" y1="0" x2="880" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="1"/></linearGradient>
+    <mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="1280" height="720"><rect width="1280" height="720" fill="url(#fade)"/></mask>
+  </defs>
+  <rect width="1280" height="720" fill="url(#g)"/>
+  <g mask="url(#m)">${ls.join('')}${ds.join('')}</g>
+  <circle cx="${CX}" cy="${CY}" r="130" fill="url(#h)"/>
+  ${tk.join('\n  ')}
+  <path d="M${CX + 38} ${CY} H1290" stroke="${C.paper}" stroke-opacity="0.85" stroke-width="2"/>
+  <circle cx="${CX}" cy="${CY}" r="38" fill="${C.brass}"/><circle cx="${CX}" cy="${CY}" r="13" fill="#155C46"/>
+  ${wordmark(96, 96, 0.62, C.green)}
+  <text x="96" y="300" font-family="Inter" font-weight="600" font-size="64" letter-spacing="-2.4" fill="${C.paper}">Live on QMS.</text>
+  <text x="96" y="372" font-family="Inter" font-weight="600" font-size="64" letter-spacing="-2.4" fill="${C.paper}" fill-opacity="0.55">Every trade, protected.</text>
+  <text x="98" y="440" font-family="Inter" font-weight="500" font-size="23" fill="${C.paper}" fill-opacity="0.66">Trading on QMS, inside Telegram. Testnet now.</text>
+  ${chips}
+  <text x="1184" y="660" text-anchor="end" font-family="Inter" font-weight="500" font-size="20" fill="${C.paper}" fill-opacity="0.6">qalibre.app</text>
+</svg>`;
+  writeFileSync(join(out, 'tg-launch-1280x720.png'), png(launch, 1280));
+  console.log('telegram launch image written');
+}
