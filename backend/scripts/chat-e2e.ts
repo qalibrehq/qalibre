@@ -66,7 +66,7 @@ const step = (n: number, s: string) => console.log(`\n${n}. ${s}`);
 async function main() {
   const account = await client.readContract({ address: dep.accountFactory, abi: QalibreAccountFactoryAbi, functionName: 'getAddress', args: [owner.address, 0n] });
   db.upsertUser(TG, 'Alice');
-  db.setAccount(TG, account, dep.settlement);
+  db.setAccount(TG, account, dep.settlement, dep.accountFactory);
   const dog = tt.QTDOG!;
   const bal = (t: Address) => client.readContract({ address: t, abi: erc20Abi, functionName: 'balanceOf', args: [account] });
   console.log(`Wallet ${account}\n  QMS ${formatUnits((await bal(TOKENS.WQMS)) + (await client.getBalance({ address: account })), 18)}  QTDOG ${formatUnits(await bal(dog), 18)}`);

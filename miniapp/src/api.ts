@@ -48,7 +48,7 @@ export interface Me {
   bot?: string;
   savedUsd?: number;
   trades?: number;
-  session?: { active: boolean; validUntil: number; anyBuyToken?: boolean };
+  session?: { active: boolean; validUntil: number; anyBuyToken?: boolean; fastMode?: boolean };
   limits?: { token: string; symbol: string; decimals: number; perTrade: number; perDay: number; spentToday: number }[];
   unwrappedQms?: number;
   testFundsAt?: number;

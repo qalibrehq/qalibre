@@ -367,6 +367,19 @@ export const QalibreAccountAbi = [
   },
   {
     "type": "function",
+    "name": "sessionFastMode",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "sessionKey",
     "inputs": [],
     "outputs": [
@@ -415,6 +428,19 @@ export const QalibreAccountAbi = [
       },
       {
         "name": "allowed",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setFastMode",
+    "inputs": [
+      {
+        "name": "on",
         "type": "bool",
         "internalType": "bool"
       }
@@ -786,6 +812,25 @@ export const QalibreAccountAbi = [
         "type": "bool",
         "indexed": false,
         "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "FastModeSet",
+    "inputs": [
+      {
+        "name": "on",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      },
+      {
+        "name": "epoch",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
       }
     ],
     "anonymous": false

@@ -1,6 +1,6 @@
 {
-  "accountFactory": "0xC443B86882C67f42EafC136591964FfC82997154",
-  "accountImplementation": "0xa82F72A2Ab8ceAD6aa285bE5A5370e3ea6F53E20",
+  "accountFactory": "0x331e64aAF8456322d2ef45Bb861AA5b60095Dd27",
+  "accountImplementation": "0x38Ed1659F6A2A858D2F1d6D00E19bd864e146517",
   "chainId": 19480,
   "deployedAtBlock": 323105,
   "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",

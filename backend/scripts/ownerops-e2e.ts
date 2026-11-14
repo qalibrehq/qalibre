@@ -46,7 +46,7 @@ async function run(label: string, account: Address, callData: Hex) {
 async function main() {
   const account = await client.readContract({ address: dep.accountFactory, abi: QalibreAccountFactoryAbi, functionName: 'getAddress', args: [owner.address, 0n] });
   db.upsertUser(TG, 'Alice');
-  db.setAccount(TG, account, dep.settlement);
+  db.setAccount(TG, account, dep.settlement, dep.accountFactory);
   const active = () => client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionActive' });
   console.log(`Alice's wallet ${account}, trading permission on: ${await active()}\n`);
 

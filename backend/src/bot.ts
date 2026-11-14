@@ -202,7 +202,7 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
         `Pairing code: <b>${r.pairing}</b>`,
         'Only continue if this matches the code on your screen and you started this yourself just now.',
         '',
-        'If you allow trading, it can check tokens and trade inside your wallet: only tokens you approved, never high-risk ones, at most 1 QMS a trade and 5 QMS a day.',
+        'If you allow trading, it can check tokens and trade inside your wallet: only tokens you approved (or any token that passes the check, if you use Fast mode), never high-risk ones, at most 1 QMS a trade and 5 QMS a day.',
         'It can never withdraw or send money out. You get a message for every trade, and you can revoke it any time with /agent.',
       ].join('\n'),
       { reply_markup: { inline_keyboard: [[{ text: 'Allow trading', callback_data: `oa:t:${id}` }, { text: 'Read only', callback_data: `oa:r:${id}` }], [{ text: 'Deny', callback_data: `oa:d:${id}` }]] } },

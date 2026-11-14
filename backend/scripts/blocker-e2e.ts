@@ -39,7 +39,7 @@ async function main() {
 
   for (const [tg, name, account] of [[1, 'Alice', alice], [2, 'Bob', bob]] as const) {
     db.upsertUser(tg, name);
-    db.setAccount(tg, account, dep.settlement);
+    db.setAccount(tg, account, dep.settlement, dep.accountFactory);
     const order: Order = { account, sellToken: TOKENS.WQMS, buyToken: TOKENS.USDC, sellAmount: amount, minBuyAmount: (direct * 99n) / 100n, maxNetworkFee: direct / 100n, validTo: now + 300n, nonce: BigInt(Date.now()) * 10n + BigInt(tg) };
     db.insertOrder({
       id: randomUUID(), tg_id: tg, account, sell_token: order.sellToken, buy_token: order.buyToken, sell_amount: amount.toString(),

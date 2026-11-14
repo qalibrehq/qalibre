@@ -40,6 +40,8 @@ export interface UserRow {
   session_key_enc: string | null;
   pending_setup: string | null;
   settlement: string | null;
+  /** The account factory that created this wallet; wallets from an older factory are offered the upgrade. */
+  factory: string | null;
   dripped: number;
   last_drip_at: number;
   created_at: number;
@@ -174,7 +176,7 @@ export function openDb(path: string) {
     );
   `);
 
-  for (const ddl of ['ALTER TABLE users ADD COLUMN pending_session_address TEXT', 'ALTER TABLE users ADD COLUMN pending_session_enc TEXT', 'ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN max_network_fee TEXT NOT NULL DEFAULT '0'", 'ALTER TABLE orders ADD COLUMN network_fee TEXT', 'ALTER TABLE users ADD COLUMN settlement TEXT', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER', 'ALTER TABLE orders ADD COLUMN status_msg_id INTEGER', 'ALTER TABLE users ADD COLUMN ref_code TEXT', 'ALTER TABLE users ADD COLUMN referrer_tg INTEGER', 'ALTER TABLE users ADD COLUMN referred_at INTEGER', 'ALTER TABLE cards ADD COLUMN msg_id INTEGER', 'ALTER TABLE orders ADD COLUMN agent_key_id TEXT']) {
+  for (const ddl of ['ALTER TABLE users ADD COLUMN pending_session_address TEXT', 'ALTER TABLE users ADD COLUMN pending_session_enc TEXT', 'ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN max_network_fee TEXT NOT NULL DEFAULT '0'", 'ALTER TABLE orders ADD COLUMN network_fee TEXT', 'ALTER TABLE users ADD COLUMN settlement TEXT', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER', 'ALTER TABLE orders ADD COLUMN status_msg_id INTEGER', 'ALTER TABLE users ADD COLUMN ref_code TEXT', 'ALTER TABLE users ADD COLUMN referrer_tg INTEGER', 'ALTER TABLE users ADD COLUMN referred_at INTEGER', 'ALTER TABLE cards ADD COLUMN msg_id INTEGER', 'ALTER TABLE orders ADD COLUMN agent_key_id TEXT', 'ALTER TABLE users ADD COLUMN factory TEXT']) {
     try {
       db.exec(ddl);
     } catch {
@@ -212,8 +214,8 @@ export function openDb(path: string) {
     setPending(tgId: number, fields: { owner: string; session_address: string; session_key_enc: string; pending_setup: string }) {
       db.prepare('UPDATE users SET owner = ?, session_address = ?, session_key_enc = ?, pending_setup = ? WHERE tg_id = ?').run(fields.owner, fields.session_address, fields.session_key_enc, fields.pending_setup, tgId);
     },
-    setAccount(tgId: number, account: string, settlement: string) {
-      db.prepare('UPDATE users SET account = ?, settlement = ?, pending_setup = NULL, dripped = 0, last_drip_at = 0 WHERE tg_id = ?').run(account, settlement, tgId);
+    setAccount(tgId: number, account: string, settlement: string, factory: string) {
+      db.prepare('UPDATE users SET account = ?, settlement = ?, factory = ?, pending_setup = NULL, dripped = 0, last_drip_at = 0 WHERE tg_id = ?').run(account, settlement, factory, tgId);
     },
     setPendingSession(tgId: number, address: string, enc: string) {
       db.prepare('UPDATE users SET pending_session_address = ?, pending_session_enc = ? WHERE tg_id = ?').run(address, enc, tgId);

@@ -34,6 +34,8 @@ async function copy(text: string): Promise<boolean> {
 export function Control({ me, nav, toast, refresh, backupNow = false }: { me: Me; nav: Nav; toast: (m: string) => void; refresh: () => void; backupNow?: boolean }) {
   const [backup, setBackup] = useState<'closed' | 'pin' | 'shown'>('closed');
   const [permission, setPermission] = useState<'off' | 'on' | null>(null);
+  const [fast, setFast] = useState<'choose' | 'on' | 'off' | null>(null);
+  const [cap, setCap] = useState<{ perTrade: number; perDay: number }>({ perTrade: 2, perDay: 5 });
   const [pin, setPin] = useState('');
   const [key, setKey] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
@@ -105,6 +107,65 @@ export function Control({ me, nav, toast, refresh, backupNow = false }: { me: Me
           await runOwnerAction(owner, me.account!, callData);
           toast(off ? 'Trading permission is off. Qalibre can no longer trade for you.' : 'Trading permission is on, with a fresh trading key.');
           setPermission(null);
+          refresh();
+        }}
+      />
+    );
+  }
+
+  // ---------- Fast mode ----------
+  if (fast === 'choose') {
+    const caps = [{ perTrade: 1, perDay: 2 }, { perTrade: 2, perDay: 5 }, { perTrade: 5, perDay: 10 }];
+    return (
+      <div className="screen fade-in">
+        <div className="bar">
+          <button className="icon-btn" aria-label="Back" onClick={() => setFast(null)}><Back /></button>
+          <span className="label">Fast mode</span>
+          <div style={{ width: 30 }} />
+        </div>
+        <h2 style={{ margin: '28px 0 0', fontSize: 26, fontWeight: 600, letterSpacing: '-0.03em', lineHeight: 1.2 }}>Trade new tokens the moment you find them.</h2>
+        <p className="muted" style={{ margin: '10px 0 0', fontSize: 15, lineHeight: 1.55 }}>Buy any token that passes the safety check without approving each one, and sell anything back to QMS in one tap.</p>
+        <div className="surface" style={{ marginTop: 20, padding: '14px 18px' }}>
+          {['Honeypots and hidden taxes are still blocked', 'Every trade settles at no worse than a direct swap', 'Nothing can ever be withdrawn without your PIN'].map((t) => (
+            <p key={t} style={{ margin: '6px 0', fontSize: 14, display: 'flex', gap: 10 }}><span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 4, background: 'var(--green-text)', marginTop: 7, flex: 'none' }} />{t}</p>
+          ))}
+        </div>
+        <p className="section" style={{ marginTop: 22 }}>Your daily QMS limit</p>
+        <p className="muted" style={{ margin: '0 0 12px', fontSize: 13, lineHeight: 1.5 }}>The most Fast mode can spend in a day. It is also the most you could lose if something went wrong on our side, so choose an amount you are comfortable with.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+          {caps.map((c) => {
+            const on = c.perDay === cap.perDay;
+            return (
+              <button key={c.perDay} onClick={() => { haptic.select(); setCap(c); }} style={{ padding: '14px 8px', borderRadius: 14, border: on ? '2px solid var(--green)' : '1px solid var(--rule-strong)', background: on ? 'var(--white)' : 'transparent', color: 'var(--ink)', cursor: 'pointer', font: 'inherit' }}>
+                <span style={{ display: 'block', fontSize: 20, fontWeight: 600 }}>{c.perDay} QMS</span>
+                <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>{c.perTrade} per trade</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="spacer" style={{ paddingTop: 20 }}>
+          <button className="btn btn-green" onClick={() => setFast('on')}>Turn on with PIN</button>
+        </div>
+      </div>
+    );
+  }
+
+  if ((fast === 'on' || fast === 'off') && me.account) {
+    const on = fast === 'on';
+    return (
+      <PinSheet
+        title={on ? 'Turn on Fast mode' : 'Turn off Fast mode'}
+        summary={
+          on
+            ? [{ label: 'Buys', value: 'Any token that passes the check' }, { label: 'QMS limit', value: `${cap.perTrade} a trade, ${cap.perDay} a day` }, { label: 'Withdrawals', value: 'Still only you' }]
+            : [{ label: 'Buys', value: 'Approved tokens only' }, { label: 'Your funds', value: 'Stay in your wallet' }]
+        }
+        onCancel={() => setFast(null)}
+        onUnlocked={async (owner) => {
+          const qms = { token: TOKENS.QMS.address as Address, perTrade: toUnits(String(cap.perTrade), TOKENS.QMS.decimals), perDay: toUnits(String(cap.perDay), TOKENS.QMS.decimals) };
+          await runOwnerAction(owner, me.account!, actions.fastMode(me.account as Address, on, on ? qms : undefined));
+          toast(on ? `Fast mode is on. Up to ${cap.perDay} QMS a day.` : 'Fast mode is off. New tokens need your approval again.');
+          setFast(null);
           refresh();
         }}
       />
@@ -197,6 +258,13 @@ export function Control({ me, nav, toast, refresh, backupNow = false }: { me: Me
           sub={active ? `On for ${days} more days` : 'Off. Qalibre cannot trade for you'}
           right={<span className={active ? 'pill-on' : 'pill-off'} style={{ fontSize: 14 }}>{active ? 'On' : 'Off'}</span>}
           onClick={() => setPermission(active ? 'off' : 'on')}
+        />
+        <Row
+          icon="bolt"
+          title="Fast mode"
+          sub={!active ? 'Turn trading permission on first' : me.session?.fastMode ? 'Any token that passes the check, no approvals' : 'Buy new tokens without approving each one'}
+          right={<span className={me.session?.fastMode ? 'pill-on' : 'pill-off'} style={{ fontSize: 14 }}>{me.session?.fastMode ? 'On' : 'Off'}</span>}
+          onClick={active ? () => setFast(me.session?.fastMode ? 'off' : 'choose') : undefined}
         />
         <Row icon="limits" title="Limits" sub={qmsLimit ? `${qmsLimit.perTrade} QMS a trade, ${qmsLimit.perDay} a day` : 'Set how much Qalibre may trade'} onClick={() => nav('limits')} />
       </div>

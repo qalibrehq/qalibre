@@ -28,6 +28,7 @@ contract CompromisedBackend is Test {
     uint256 public victimSoldToday;
     /// Set if the victim ever received less than a direct swap would have paid (audit 1.1).
     bool public victimShortchanged;
+    uint256 public dumpedCount;
     uint256 public settledCount;
     uint256 public lastDay;
     uint256 public nonce;
@@ -91,6 +92,35 @@ contract CompromisedBackend is Test {
             victimSoldToday += before - tokA.balanceOf(address(victim));
             if (tokB.balanceOf(address(victim)) - beforeB < direct) victimShortchanged = true;
             settledCount++;
+        } catch {}
+    }
+
+    /// Fast mode's new power: the victim's unlimited token (B) sold back to A at whatever price the attacker picks.
+    function dumpUnlimitedAtAttackerPrice(uint256 amount, uint256 aPerB) external {
+        uint256 held = tokB.balanceOf(address(victim));
+        if (held == 0) return;
+        amount = bound(amount, 1, held);
+        aPerB = bound(aPerB, 1, 10e18);
+        uint256 aAmount = (amount * aPerB) / 1e18;
+        if (aAmount == 0) return;
+        tokA.mint(address(counterparty), aAmount);
+
+        OrderLib.Order memory ov = _order(victim, address(tokB), address(tokA), amount, 0);
+        OrderLib.Order memory oc = _order(counterparty, address(tokA), address(tokB), aAmount, 0);
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](2);
+        trades[0] = _t(ov);
+        trades[1] = _t(oc);
+        uint256[] memory prices = new uint256[](2);
+        (address[] memory toks, bool aFirst) = _tokens();
+        // Prices are per token: A at 1e18, B at aPerB (A per B).
+        (prices[0], prices[1]) = aFirst ? (uint256(1e18), aPerB) : (aPerB, uint256(1e18));
+
+        uint256 beforeA = tokA.balanceOf(address(victim));
+        uint256 direct = IVenueAdapterLike(adapter).quote(address(tokB), address(tokA), amount, "");
+        vm.prank(attacker);
+        try settlement.settle(toks, prices, trades, new QalibreSettlement.Interaction[](0)) {
+            if (tokA.balanceOf(address(victim)) - beforeA < direct) victimShortchanged = true;
+            dumpedCount++;
         } catch {}
     }
 
@@ -184,3 +214,56 @@ contract InvariantsTest is BaseTest {
         assertEq(tokB.balanceOf(address(settlement)), 0);
     }
 }
+
+/// The same compromised backend (session key + solver role + its own counterparty), against a victim in Fast mode
+/// who holds a token with no limit at all. Fast mode lets that token be sold to wrapped QMS without a cap, so the
+/// price floor is the only thing standing between the attacker and the victim's holdings. It must hold.
+contract InvariantsFastModeTest is BaseTest {
+    CompromisedBackend internal handler;
+    QalibreAccount internal victim;
+    address internal victimOwner;
+
+    function setUp() public override {
+        super.setUp();
+        victim = _createFunded(0xA11CE, 1_000_000 ether, 50_000 ether);
+        victimOwner = vm.addr(0xA11CE);
+        vm.startPrank(victimOwner);
+        victim.setTokenLimit(address(tokB), 0, 0); // B has no limit: only Fast mode can sell it
+        victim.setFastMode(true);
+        vm.stopPrank();
+        QalibreAccount.SessionSetup memory wide = _defaultSession();
+        wide.limits[0] = QalibreAccount.TokenLimit(address(tokA), type(uint128).max, type(uint128).max);
+        wide.limits[1] = QalibreAccount.TokenLimit(address(tokB), type(uint128).max, type(uint128).max);
+        QalibreAccount counterparty = _createAccount(0xB0B, wide);
+        settlement.scheduleSolver(sessionKey);
+        vm.warp(block.timestamp + 2 days);
+        settlement.executeSolver(sessionKey);
+        handler = new CompromisedBackend(victim, counterparty, settlement, tokA, tokB, SESSION_PK, address(adapter));
+        targetContract(address(handler));
+    }
+
+    function invariant_fastModeVictimNeverBelowDirect() public view {
+        assertFalse(handler.victimShortchanged());
+    }
+
+    function invariant_fastModeAttackerGetsNothing() public view {
+        assertEq(tokA.balanceOf(sessionKey), 0);
+        assertEq(tokB.balanceOf(sessionKey), 0);
+    }
+
+    function invariant_fastModeDailyCapOnWrappedQmsHolds() public view {
+        assertLe(handler.victimSoldToday(), 2_000 ether);
+    }
+
+    function invariant_fastModeControlNeverChanges() public view {
+        assertEq(victim.owner(), victimOwner);
+        assertEq(victim.settlement(), address(settlement));
+    }
+
+    /// Not vacuous: at a fair price the attacker's dump really settles, so the invariant is tested on real fills.
+    function test_fastModeHandlerCanActuallyDump() public {
+        handler.dumpUnlimitedAtAttackerPrice(10 ether, 0.5e18); // pool price: 1 B = 0.5 A
+        assertEq(handler.dumpedCount(), 1, "handler settled a real fast-mode sale");
+    }
+}
+

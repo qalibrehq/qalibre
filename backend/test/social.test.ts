@@ -48,7 +48,7 @@ describe('referrals', () => {
     expect(db.setReferrer(1, 1)).toBe(false); // self
     expect(db.setReferrer(2, 1)).toBe(true);
     expect(db.setReferrer(2, 3)).toBe(false); // already has an inviter
-    db.setAccount(3, '0xabc', '0xdef');
+    db.setAccount(3, '0xabc', '0xdef', '0xfac');
     expect(db.setReferrer(3, 1)).toBe(false); // existing wallet: not an invite
   });
   it('rewards are paid exactly once', () => {

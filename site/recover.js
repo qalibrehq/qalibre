@@ -12,7 +12,8 @@
     blockExplorerUrls: ['https://testnet.qmsscan.io'],
   };
   const EXPLORER = 'https://testnet.qmsscan.io';
-  const FACTORY = '0xC443B86882C67f42EafC136591964FfC82997154';
+  // Every Qalibre wallet factory, newest first (v3 Fast mode, v2, v1). The same owner key has one wallet per version.
+  const FACTORIES = ['0x331e64aAF8456322d2ef45Bb861AA5b60095Dd27', '0xC443B86882C67f42EafC136591964FfC82997154', '0xC169996AD1d41F29e04654B255B190c8f1F0DeD1'];
   const KNOWN = [
     { address: '0x9AA510295aC664A3d5A3182a3eFe959DE2B12c34', symbol: 'WQMS', decimals: 18, note: 'Wrapped QMS, 1:1 with QMS' },
     { address: '0xDfF68E53a0A8275212927c12017f5aB5f1842a04', symbol: 'USDC', decimals: 6, note: 'USD Coin' },
@@ -201,8 +202,18 @@
     say('connect-text', 'Connected.');
     mark('connect', 'done');
     if (!state.wallet) {
-      const predicted = decodeAddr(await call(FACTORY, SEL.getAddress + encAddr(state.account) + encUint(0)));
-      state.wallet = predicted;
+      // Prefer the newest wallet that holds something; otherwise the newest that exists at all.
+      let firstExisting = null;
+      for (const f of FACTORIES) {
+        const w = decodeAddr(await call(f, SEL.getAddress + encAddr(state.account) + encUint(0)).catch(() => '0x'));
+        if (!w) continue;
+        const code = await rpc('eth_getCode', [w, 'latest']).catch(() => '0x');
+        if (!code || code === '0x') continue;
+        firstExisting = firstExisting || w;
+        const held = toBig(await rpc('eth_getBalance', [w, 'latest'])) + toBig(await call(KNOWN[0].address, SEL.balanceOf + encAddr(w)).catch(() => '0x0'));
+        if (held > 0n) { state.wallet = w; break; }
+      }
+      state.wallet = state.wallet || firstExisting;
     }
     await loadWallet();
   }

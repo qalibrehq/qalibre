@@ -1,6 +1,7 @@
 /** Line icons drawn on a 24 grid, 1.6 stroke, round joins: one family for the whole app. */
 const P: Record<string, string> = {
   buy: 'M12 5v14M5 12h14',
+  bolt: 'M13 3 5.5 13.5H11L10 21l7.5-10.5H12L13 3z',
   sell: 'M5 12h14',
   receive: 'M12 4v12M6.5 10.5 12 16l5.5-5.5M5 20h14',
   send: 'M12 20V8M6.5 13.5 12 8l5.5 5.5M5 4h14',

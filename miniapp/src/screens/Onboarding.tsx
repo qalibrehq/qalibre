@@ -138,7 +138,7 @@ export function Onboarding({ onDone, resume, upgraded = false }: { onDone: () =>
   const sub =
     step === 'unlock'
       ? upgraded
-        ? 'Enter your PIN to open your wallet on the new, safer contracts. Your key stays the same, and test funds will be added again.'
+        ? 'Enter your PIN to open your new wallet, with Fast mode. Your key stays the same and test funds are added. Anything in your previous wallet stays there, and you can move it any time at qalibre.app/recover.'
         : 'Unlock your wallet key to finish setting up.'
       : 'Six digits. It locks your wallet key, which is stored encrypted in your own Telegram account. Qalibre never sees it and cannot reset it, so you will back up the key next.';
   return (

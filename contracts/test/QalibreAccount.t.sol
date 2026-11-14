@@ -351,10 +351,113 @@ contract QalibreAccountTest is BaseTest {
             }
         }
     }
+    // ---------------------------------------------------------------------------------------------
+    // Fast mode: any token in, any token back out to wrapped QMS, within the wrapped-QMS limits
+    // ---------------------------------------------------------------------------------------------
+
+    /// Alice sells `amountB` B (a token with no limit) back to A (wrapped QMS); Carol takes the other side.
+    function _fastSellTrades(uint256 amountB) internal returns (QalibreSettlement.Trade[] memory trades) {
+        QalibreAccount carol = _createFunded(0xCA401, 2_000 ether, 0);
+        OrderLib.Order memory oa = _order(alice, address(tokB), address(tokA), amountB, 0);
+        OrderLib.Order memory oc = _order(carol, address(tokA), address(tokB), amountB / 2, 0);
+        trades = new QalibreSettlement.Trade[](2);
+        trades[0] = _trade(oa, _sign(SESSION_PK, 1, oa));
+        trades[1] = _trade(oc, _sign(SESSION_PK, 1, oc));
+    }
+
+    function _withoutTokenBLimit() internal {
+        vm.prank(aliceOwner);
+        alice.setTokenLimit(address(tokB), 0, 0); // B is no longer approved for selling
+        tokB.mint(address(alice), 100 ether);
+    }
+
+    function test_revert_unlimitedTokenCannotBeSoldWithoutFastMode() public {
+        _withoutTokenBLimit();
+        QalibreSettlement.Trade[] memory trades = _fastSellTrades(100 ether);
+        uint256[] memory p = _prices(2e18);
+        vm.expectRevert(QalibreAccount.SellTokenNotAllowed.selector);
+        _settle(p, trades, _noInteractions());
+    }
+
+    function test_fastModeSellsAnyTokenBackToWrappedQms() public {
+        _withoutTokenBLimit();
+        vm.prank(aliceOwner);
+        alice.setFastMode(true);
+        uint256 aBefore = tokA.balanceOf(address(alice));
+        _settle(_prices(2e18), _fastSellTrades(100 ether), _noInteractions());
+        assertEq(tokB.balanceOf(address(alice)), 0);
+        assertGt(tokA.balanceOf(address(alice)), aBefore + 49 ether); // ~50 A at 2 B/A, less the fee
+        assertEq(alice.spentToday(address(tokB)), 0); // unlimited sells are not counted against any cap
+    }
+
+    function test_revert_fastModeNeverSellsIntoAnythingButWrappedQms() public {
+        router.addPool(address(tokC), address(tokB), 1_000 ether, 1_000 ether);
+        tokC.mint(address(alice), 10 ether);
+        vm.prank(aliceOwner);
+        alice.setFastMode(true);
+        OrderLib.Order memory oc = _order(alice, address(tokC), address(tokB), 1 ether, 0); // C -> B, not -> wrapped QMS
+        QalibreSettlement.Trade[] memory trades = new QalibreSettlement.Trade[](1);
+        address[] memory toks = _sorted3();
+        trades[0].order = oc;
+        trades[0].signature = _sign(SESSION_PK, 1, oc);
+        trades[0].sellTokenIndex = _idx(toks, address(tokC));
+        trades[0].buyTokenIndex = _idx(toks, address(tokB));
+        uint256[] memory p = new uint256[](3);
+        p[0] = 1e18;
+        p[1] = 1e18;
+        p[2] = 1e18;
+        vm.prank(solver);
+        vm.expectRevert(QalibreAccount.SellTokenNotAllowed.selector);
+        settlement.settle(toks, p, trades, _noInteractions());
+    }
+
+    function test_fastModeBuysAnyTokenButWrappedQmsLimitsStillApply() public {
+        vm.startPrank(aliceOwner);
+        alice.setBuyTokenAllowed(address(tokB), false);
+        alice.setFastMode(true);
+        vm.stopPrank();
+        assertTrue(alice.isBuyTokenAllowed(address(tokB)));
+        _sessionTrade(500 ether); // buying B no longer needs the allowlist
+        _sessionTradeReverts(1_001 ether, QalibreAccount.PerTradeLimit.selector); // the QMS cap still binds
+    }
+
+    function test_revert_onlyTheOwnerSwitchesFastMode() public {
+        vm.prank(sessionKey);
+        vm.expectRevert(QalibreAccount.NotAuthorized.selector);
+        alice.setFastMode(true);
+        vm.prank(makeAddr("attacker"));
+        vm.expectRevert(QalibreAccount.NotAuthorized.selector);
+        alice.setFastMode(true);
+        assertFalse(alice.sessionFastMode());
+    }
+
+    function test_fastModeIsResetByEveryNewSession() public {
+        vm.startPrank(aliceOwner);
+        alice.setFastMode(true);
+        alice.revokeSession();
+        assertFalse(alice.sessionFastMode());
+        assertFalse(alice.sessionAnyBuyToken());
+        alice.setSession(_defaultSession());
+        assertFalse(alice.sessionFastMode());
+        alice.setFastMode(true);
+        alice.setSession(_defaultSession()); // a fresh session, even without revoking first
+        assertFalse(alice.sessionFastMode());
+        vm.stopPrank();
+    }
+
+    function test_turningFastModeOffRestoresTheAllowlist() public {
+        vm.startPrank(aliceOwner);
+        alice.setBuyTokenAllowed(address(tokB), false);
+        alice.setFastMode(true);
+        alice.setFastMode(false);
+        vm.stopPrank();
+        _sessionTradeReverts(1 ether, QalibreAccount.BuyTokenNotAllowed.selector);
+    }
 }
 
 contract Deployer {
     function deploy(IEntryPoint ep, address owner_) external returns (QalibrePaymaster) {
         return new QalibrePaymaster(ep, owner_, owner_);
     }
+
 }

@@ -17,6 +17,7 @@ export const accountAbi = parseAbi([
   'function revokeSession()',
   'function setTokenLimit(address token, uint128 perTrade, uint128 perDay)',
   'function setAnyBuyToken(bool any)',
+  'function setFastMode(bool on)',
   'function setBuyTokenAllowed(address token, bool allowed)',
   'function executeBatch(address[] targets, uint256[] values, bytes[] datas)',
   'function execute(address target, uint256 value, bytes data)',
@@ -84,6 +85,16 @@ export const actions = {
       encodeFunctionData({ abi: accountAbi, functionName: 'setTokenLimit', args: [token, MAX, MAX] }),
     ];
     return encodeFunctionData({ abi: accountAbi, functionName: 'executeBatch', args: [[wallet, wallet], [0n, 0n], datas] });
+  },
+  /**
+   * Fast mode, as one signed action. Turning it on also sets the QMS limits, because in Fast mode the daily QMS
+   * limit is the most that can ever be spent on new tokens. Turning it off restores the approval list.
+   */
+  fastMode(wallet: Address, on: boolean, qms?: { token: Address; perTrade: bigint; perDay: bigint }) {
+    const datas: Hex[] = [];
+    if (on && qms) datas.push(encodeFunctionData({ abi: accountAbi, functionName: 'setTokenLimit', args: [qms.token, qms.perTrade, qms.perDay] }));
+    datas.push(encodeFunctionData({ abi: accountAbi, functionName: 'setFastMode', args: [on] }));
+    return encodeFunctionData({ abi: accountAbi, functionName: 'executeBatch', args: [datas.map(() => wallet), datas.map(() => 0n), datas] });
   },
   send(token: Address, to: Address, amount: bigint) {
     return encodeFunctionData({ abi: accountAbi, functionName: 'execute', args: [token, 0n, encodeFunctionData({ abi: erc20, functionName: 'transfer', args: [to, amount] })] });

@@ -17,7 +17,7 @@ const dep = loadDeployment();
 const account = await publicClient().readContract({ address: dep.accountFactory, abi: QalibreAccountFactoryAbi, functionName: 'getAddress', args: [privateKeyToAccount(keys.alice!).address, 0n] });
 const db = openDb(':memory:');
 db.upsertUser(1, 'Alice');
-db.setAccount(1, account, dep.settlement);
+db.setAccount(1, account, dep.settlement, dep.accountFactory);
 const sent: { image?: Buffer; caption?: string; markup?: unknown }[] = [];
 const bot = {
   call: async () => ({}),

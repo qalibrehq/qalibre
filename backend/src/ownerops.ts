@@ -42,14 +42,14 @@ function checkPolicy(account: Address, callData: Hex): { action: string; detail?
     throw new UserError('That action is not supported.');
   }
   const fn = decoded.functionName;
-  if (['revokeSession', 'setTokenLimit', 'setAnyBuyToken', 'setBuyTokenAllowed', 'setSession'].includes(fn)) return { action: fn };
+  if (['revokeSession', 'setTokenLimit', 'setAnyBuyToken', 'setBuyTokenAllowed', 'setSession', 'setFastMode'].includes(fn)) return { action: fn };
   if (fn === 'executeBatch') {
     const [targets, values, datas] = decoded.args as readonly [readonly Address[], readonly bigint[], readonly Hex[]];
     const approved: Address[] = [];
     for (let i = 0; i < targets.length; i++) {
       if (targets[i]!.toLowerCase() !== account.toLowerCase() || values[i] !== 0n) throw new UserError('That action is not supported.');
       const inner = decodeFunctionData({ abi: QalibreAccountAbi, data: datas[i]! });
-      if (!['setTokenLimit', 'setAnyBuyToken', 'setBuyTokenAllowed'].includes(inner.functionName)) throw new UserError('That action is not supported.');
+      if (!['setTokenLimit', 'setAnyBuyToken', 'setBuyTokenAllowed', 'setFastMode'].includes(inner.functionName)) throw new UserError('That action is not supported.');
       if (inner.functionName === 'setBuyTokenAllowed' && (inner.args as readonly [Address, boolean])[1]) approved.push((inner.args as readonly [Address, boolean])[0]);
     }
     return approved.length ? { action: 'approveToken', approved } : { action: 'editLimits' };

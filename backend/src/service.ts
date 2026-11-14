@@ -85,8 +85,11 @@ function reviveSetup(json: string) {
 }
 
 /** A wallet is current when it was created for the deployed settlement contract (older versions need re-opening). */
-function isCurrent<T extends { account: string | null; settlement: string | null }>(u: T | undefined): u is T & { account: string } {
-  return Boolean(u?.account && u.settlement && u.settlement.toLowerCase() === dep.settlement.toLowerCase());
+/** A wallet is current when it was made by today's factory for today's settlement; older ones get the upgrade flow. */
+function isCurrent<T extends { account: string | null; settlement: string | null; factory?: string | null }>(u: T | undefined): u is T & { account: string } {
+  return Boolean(
+    u?.account && u.settlement && u.settlement.toLowerCase() === dep.settlement.toLowerCase() && u.factory && u.factory.toLowerCase() === dep.accountFactory.toLowerCase(),
+  );
 }
 
 /** What an order notification is about, so the chat can update the trade card in place instead of posting anew. */
@@ -135,7 +138,7 @@ export function createService(db: Db, notify: Notify) {
       const hash = await relay((w) => w.writeContract({ address: dep.accountFactory, abi: QalibreAccountFactoryAbi, functionName: 'createAccount', args: [setup, ownerSignature], account: relayer, chain: w.chain }));
       await waitForConfirmations(client, hash, 1n);
     }
-    db.setAccount(tgId, account, dep.settlement);
+    db.setAccount(tgId, account, dep.settlement, dep.accountFactory);
     void drip(tgId, account);
     return { account };
   }
@@ -300,27 +303,30 @@ export function createService(db: Db, notify: Notify) {
     const buyingNewToken = !SUPPORTED.has(buyToken.toLowerCase());
     await checkTradable(sellToken, buyToken, buyingNewToken);
     const account = user.account as Address;
-    const [bal, limit, spent, active, buyAllowed, sellInfo] = await Promise.all([
+    const [bal, limit, spent, active, buyAllowed, sellInfo, fastMode] = await Promise.all([
       client.readContract({ address: sellToken, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'tokenLimit', args: [sellToken] }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'spentToday', args: [sellToken] }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionActive' }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'isBuyTokenAllowed', args: [buyToken] }),
       tokenInfo(sellToken),
+      client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionFastMode' }).catch(() => false),
     ]);
     const sym = sellInfo.symbol;
     if (!active) throw new UserError('Trading is turned off for your wallet. Turn it on in your Wallet, then try again.');
     const [perTrade, perDay] = limit as readonly [bigint, bigint];
     // A token the owner has not approved needs a one-time approval signed on their phone.
     if (!buyAllowed) throw new NeedsApproval(buyToken);
-    if (perTrade === 0n) throw new NeedsApproval(sellToken);
+    // Fast mode (mirrors the wallet contract): a token with no limit may be sold, but only back to QMS.
+    const fastSell = perTrade === 0n && fastMode && buyToken.toLowerCase() === TOKENS.WQMS.toLowerCase();
+    if (perTrade === 0n && !fastSell) throw new NeedsApproval(sellToken);
     // Native QMS counts: the wallet wraps any shortfall automatically when the order settles.
     const native = sellToken.toLowerCase() === TOKENS.WQMS.toLowerCase() ? await client.getBalance({ address: account }) : 0n;
     const spendable = bal + native;
     if (sellAmount > spendable) throw new UserError(`You don't have enough ${sym}.`);
-    if (sellAmount > perTrade) throw new UserError('That\'s more than your per-trade limit. You can raise it in your Wallet.');
+    if (!fastSell && sellAmount > perTrade) throw new UserError('That\'s more than your per-trade limit. You can raise it in your Wallet.');
     const reserved = db.pendingOrders().filter((o) => o.tg_id === tgId && o.sell_token.toLowerCase() === sellToken.toLowerCase()).reduce((s, o) => s + BigInt(o.sell_amount), 0n);
-    if (spent + reserved + sellAmount > perDay) throw new UserError('That would go over today\'s limit. It resets every 24 hours, or you can raise it in your Wallet.');
+    if (!fastSell && spent + reserved + sellAmount > perDay) throw new UserError('That would go over today\'s limit. It resets every 24 hours, or you can raise it in your Wallet.');
     if (reserved + sellAmount > spendable) throw new UserError(`You already have pending orders using this ${sym}.`);
 
     const q = await quote(sellToken, buyToken, sellAmount);
@@ -598,7 +604,7 @@ export function createService(db: Db, notify: Notify) {
     const user = db.getUser(tgId);
     if (!isCurrent(user)) return null;
     const account = user.account as Address;
-    const [wqms, native, [qmsPerTrade], balance, buyAllowed, [tokenPerTrade], active] = await Promise.all([
+    const [wqms, native, [qmsPerTrade], balance, buyAllowed, [tokenPerTrade], active, fastMode] = await Promise.all([
       client.readContract({ address: TOKENS.WQMS, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
       client.getBalance({ address: account }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'tokenLimit', args: [TOKENS.WQMS] }),
@@ -606,8 +612,9 @@ export function createService(db: Db, notify: Notify) {
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'isBuyTokenAllowed', args: [token] }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'tokenLimit', args: [token] }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionActive' }),
+      client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionFastMode' }).catch(() => false),
     ]);
-    return { account, qmsSpendable: wqms + native, qmsPerTrade, balance, buyAllowed, canSell: tokenPerTrade > 0n, active };
+    return { account, qmsSpendable: wqms + native, qmsPerTrade, balance, buyAllowed, canSell: tokenPerTrade > 0n || fastMode, active, fastMode };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -627,6 +634,7 @@ export function createService(db: Db, notify: Notify) {
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionActive' }),
       client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionValidUntil' }),
     ]);
+    const fastMode = await client.readContract({ address: account, abi: QalibreAccountAbi, functionName: 'sessionFastMode' }).catch(() => false);
     // Live limits and today's usage, read from the wallet contract itself.
     const limitFor = async (token: Address, decimals: number, symbol: string) => {
       const [[perTrade, perDay], spent] = await Promise.all([
@@ -668,7 +676,7 @@ export function createService(db: Db, notify: Notify) {
       unwrappedQms: unwrapped,
       savedUsd,
       trades: filled.length,
-      session: { active, validUntil: Number(validUntil), anyBuyToken },
+      session: { active, validUntil: Number(validUntil), anyBuyToken, fastMode },
       limits: [limQms, limUsdc],
       testFundsAt: user.last_drip_at + 86_400,
     };

@@ -87,6 +87,10 @@ contract QalibreAccount is BaseAccount, IERC1271, IQalibreAccount, Initializable
     bool public sessionAnyBuyToken;
     /// @dev Bumped on every session change so old limits/allowlists/spend can never be reused.
     uint32 public sessionEpoch;
+    /// @notice Fast mode (owner opt-in): the session may buy any token and sell any token back to wrapped QMS.
+    ///         Spending stays capped by the wrapped-QMS limits; a sale can only return wrapped QMS to this account,
+    ///         and the settlement still enforces its direct-swap price floor. Reset by every new session.
+    bool public sessionFastMode;
 
     mapping(uint32 epoch => mapping(address token => Limit)) internal _limits;
     mapping(uint32 epoch => mapping(address token => mapping(uint256 day => uint256))) public spent;
@@ -99,6 +103,7 @@ contract QalibreAccount is BaseAccount, IERC1271, IQalibreAccount, Initializable
 
     event Initialized(address indexed owner, address indexed settlement);
     event SessionSet(address indexed key, uint48 validUntil, bool anyBuyToken, uint32 epoch);
+    event FastModeSet(bool on, uint32 epoch);
     event SessionRevoked(uint32 epoch);
     event TokenLimitSet(uint32 indexed epoch, address indexed token, uint128 perTrade, uint128 perDay);
     event BuyTokenSet(uint32 indexed epoch, address indexed token, bool allowed);
@@ -259,11 +264,20 @@ contract QalibreAccount is BaseAccount, IERC1271, IQalibreAccount, Initializable
         emit SessionSet(sessionKey, sessionValidUntil, any, sessionEpoch);
     }
 
+    /// @notice Turn Fast mode on or off. On: buy any token (within the wrapped-QMS limits) and sell any token
+    ///         back to wrapped QMS without a per-token limit. Off restores the allowlist. Owner only.
+    function setFastMode(bool on) external onlyOwnerAuth {
+        sessionFastMode = on;
+        sessionAnyBuyToken = on;
+        emit FastModeSet(on, sessionEpoch);
+    }
+
     /// @notice Immediately and permanently disable the current session key.
     function revokeSession() external onlyOwnerAuth {
         sessionKey = address(0);
         sessionValidUntil = 0;
         sessionAnyBuyToken = false;
+        sessionFastMode = false;
         unchecked {
             ++sessionEpoch;
         }
@@ -339,13 +353,17 @@ contract QalibreAccount is BaseAccount, IERC1271, IQalibreAccount, Initializable
 
         uint32 epoch = sessionEpoch;
         Limit memory l = _limits[epoch][order.sellToken];
-        if (l.perTrade == 0) revert SellTokenNotAllowed();
-        if (order.sellAmount > l.perTrade) revert PerTradeLimit();
-
-        uint256 day = block.timestamp / 1 days;
-        uint256 newSpent = spent[epoch][order.sellToken][day] + order.sellAmount;
-        if (newSpent > l.perDay) revert PerDayLimit();
-        spent[epoch][order.sellToken][day] = newSpent;
+        if (l.perTrade == 0) {
+            // No limit for this token. Only Fast mode allows it, and only a sale back to wrapped QMS: the proceeds
+            // can only land in this account, and the settlement refuses any fill below the direct-swap price.
+            if (!(sessionFastMode && wrappedNative != address(0) && order.buyToken == wrappedNative)) revert SellTokenNotAllowed();
+        } else {
+            if (order.sellAmount > l.perTrade) revert PerTradeLimit();
+            uint256 day = block.timestamp / 1 days;
+            uint256 newSpent = spent[epoch][order.sellToken][day] + order.sellAmount;
+            if (newSpent > l.perDay) revert PerDayLimit();
+            spent[epoch][order.sellToken][day] = newSpent;
+        }
 
         if (!sessionAnyBuyToken && !_buyAllowed[epoch][order.buyToken]) revert BuyTokenNotAllowed();
     }
@@ -384,6 +402,7 @@ contract QalibreAccount is BaseAccount, IERC1271, IQalibreAccount, Initializable
         sessionKey = s.key;
         sessionValidUntil = s.validUntil;
         sessionAnyBuyToken = s.anyBuyToken;
+        sessionFastMode = false; // a new session always starts careful
         for (uint256 i; i < s.limits.length; ++i) {
             _setLimit(epoch, s.limits[i].token, s.limits[i].perTrade, s.limits[i].perDay);
         }
