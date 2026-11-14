@@ -5,6 +5,7 @@ import { fmtSig } from './chat.js';
 import type { Service } from './service.js';
 import type { Chat } from './chat.js';
 import type { Social } from './social.js';
+import { AGENT_KEY_DAYS, issueAgentKey } from './agent.js';
 
 interface Update {
   update_id: number;
@@ -22,6 +23,7 @@ export async function setupBot(bot: Bot) {
       { command: 'sell', description: 'Sell a token you hold' },
       { command: 'portfolio', description: 'What you hold, with profit and loss' },
       { command: 'wallet', description: 'Your wallet, keys and limits' },
+      { command: 'agent', description: 'Let an AI agent trade within your limits' },
       { command: 'invite', description: 'Invite friends, earn from our fee' },
       { command: 'stats', description: 'Scams blocked and trades so far' },
       { command: 'help', description: 'How Qalibre works' },
@@ -136,6 +138,98 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
     },
   };
 
+  // ---------- Agent connector: keys for AI agents (MCP) ----------
+  const MAX_AGENT_KEYS = 5;
+  const mcpUrl = () => (config.miniAppUrl ? new URL('/mcp', config.miniAppUrl).toString() : 'https://app.qalibre.app/mcp');
+  const ago = (t: number | null) => {
+    if (!t) return 'never used';
+    const s = Math.floor(Date.now() / 1000) - t;
+    return s < 120 ? 'used just now' : s < 7200 ? `used ${Math.round(s / 60)} min ago` : s < 172800 ? `used ${Math.round(s / 3600)} h ago` : `used ${Math.round(s / 86400)} days ago`;
+  };
+
+  function agentPage(tgId: number): { text: string; kb: unknown[][] } {
+    const keys = db.activeAgentKeys(tgId);
+    const lines = [
+      '<b>AI agents</b>',
+      '',
+      'Connect Claude or another AI agent to Qalibre. It can check tokens, quote and trade inside your wallet, and nothing else:',
+      '· It can never withdraw or send money out.',
+      '· It can only buy tokens you approved, never high-risk ones.',
+      '· Its own caps: 1 QMS per trade, 5 QMS a day, inside your wallet limits.',
+      '· You get a message for every trade it makes, with a Revoke button.',
+      '',
+    ];
+    if (keys.length) {
+      lines.push('<b>Active keys</b>');
+      for (const k of keys) lines.push(`${esc(k.label)}  <code>${esc(k.prefix)}…</code>  ${k.can_trade ? 'trading' : 'read-only'}, ${ago(k.last_used_at)}`);
+    } else {
+      lines.push('No agent keys yet.');
+    }
+    const kb: unknown[][] = [];
+    if (keys.length < MAX_AGENT_KEYS) kb.push([{ text: 'New trading key', callback_data: 'ag:new:t' }, { text: 'New read-only key', callback_data: 'ag:new:r' }]);
+    for (const k of keys) kb.push([{ text: `Revoke ${k.label} (${k.prefix}…)`, callback_data: `ag:rv:${k.id}` }]);
+    if (keys.length > 1) kb.push([{ text: 'Revoke all agent keys', callback_data: 'ag:rvall' }]);
+    kb.push([{ text: 'Home', callback_data: 'm:home' }]);
+    return { text: lines.join('\n'), kb };
+  }
+
+  async function onAgent(q: { id: string; from: { id: number }; data?: string; message?: { message_id: number; chat: { id: number } } }) {
+    const tgId = q.from.id;
+    const d = q.data ?? '';
+    const msgId = q.message?.message_id;
+    const refresh = async () => {
+      const p = agentPage(tgId);
+      if (msgId) await bot.editMessage(tgId, msgId, p.text, { reply_markup: { inline_keyboard: p.kb } }).catch(() => undefined);
+    };
+    if (d === 'ag:new:t' || d === 'ag:new:r') {
+      if (!svc.isRegistered(tgId)) return void (await bot.answer(q.id, 'Create your wallet first.', true));
+      if (db.activeAgentKeys(tgId).length >= MAX_AGENT_KEYS) return void (await bot.answer(q.id, `You can have up to ${MAX_AGENT_KEYS} agent keys. Revoke one first.`, true));
+      await bot.answer(q.id);
+      const canTrade = d === 'ag:new:t';
+      const n = db.activeAgentKeys(tgId).length + 1;
+      const { secret } = issueAgentKey(db, tgId, { label: `Agent ${n}`, canTrade });
+      const url = mcpUrl();
+      const sent = (await bot.sendMessage(
+        tgId,
+        [
+          `<b>Your new ${canTrade ? 'trading' : 'read-only'} agent key</b>`,
+          '',
+          `<code>${secret}</code>`,
+          '',
+          'Shown once. Anyone with this key can do what an agent can, so keep it private. This message deletes itself in 15 minutes.',
+          '',
+          '<b>Claude Code</b>',
+          `<code>claude mcp add --transport http qalibre ${url} --header "Authorization: Bearer ${secret}"</code>`,
+          '',
+          '<b>Any other MCP client</b>',
+          `Server URL: <code>${url}</code>`,
+          `Header: <code>Authorization: Bearer ${secret}</code>`,
+          '',
+          `It expires in ${AGENT_KEY_DAYS} days. Revoke it any time with /agent.`,
+        ].join('\n'),
+      )) as { message_id?: number };
+      if (sent?.message_id) setTimeout(() => void bot.call('deleteMessage', { chat_id: tgId, message_id: sent.message_id }).catch(() => undefined), 15 * 60_000);
+      return refresh();
+    }
+    if (d === 'ag:rvall') {
+      const n = db.revokeAllAgentKeys(tgId);
+      await bot.answer(q.id, n ? `Revoked ${n} agent ${n === 1 ? 'key' : 'keys'}.` : 'Nothing to revoke.');
+      return refresh();
+    }
+    if (d === 'ag:list') {
+      await bot.answer(q.id);
+      const p = agentPage(tgId);
+      return void (await bot.sendMessage(tgId, p.text, { reply_markup: { inline_keyboard: p.kb } }));
+    }
+    const m = /^ag:rv:([0-9a-f-]{36})$/.exec(d);
+    if (m) {
+      const ok = db.revokeAgentKey(m[1]!, tgId);
+      await bot.answer(q.id, ok ? 'Revoked. That agent can no longer do anything.' : 'Already revoked.');
+      return refresh();
+    }
+    await bot.answer(q.id);
+  }
+
   /** Menu buttons. Pages change in place, like an app; actions send their own message. */
   async function onMenu(q: { id: string; from: { id: number; first_name?: string }; data?: string; message?: { message_id: number; chat: { id: number } } }) {
     const tgId = q.from.id;
@@ -176,6 +270,7 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
         return;
       }
       if (d.startsWith('m:') && q.message?.chat.type === 'private') return onMenu(q);
+      if (d.startsWith('ag:') && q.message?.chat.type === 'private') return onAgent(q);
       return chat.onCallback(q);
     }
     if (u.inline_query) return chat.onInlineQuery(u.inline_query);
@@ -191,6 +286,10 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
     // An invite link: remember the inviter, then continue to the normal welcome.
     if (cmd === '/start' && payload) social.applyInvite(id, payload);
     if (cmd === '/invite') return social.inviteMessage(id);
+    if (cmd === '/agent' || cmd === '/agents') {
+      const p = agentPage(id);
+      return void (await bot.sendMessage(id, p.text, { reply_markup: { inline_keyboard: p.kb } }));
+    }
     if (cmd === '/wallet') {
       return void (await bot.sendMessage(id, 'Your wallet: balances, your PIN-protected key, approvals, limits, and sending money out.', config.miniAppUrl ? { reply_markup: { inline_keyboard: [walletButton('Open Wallet')] } } : {}));
     }

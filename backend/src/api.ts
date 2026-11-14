@@ -115,12 +115,16 @@ async function serveStatic(pathname: string, res: ServerResponse) {
 export interface ApiExtras {
   invite?: (tgId: number) => { link: string; invited: number; trading: number; earnedQms: string; paidQms: string; sharePct: number; days: number };
   botUsername?: string;
+  /** The agent connector (MCP) at /mcp. */
+  agent?: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 }
 
 export function startApi(db: Db, svc: Service, owner: OwnerOps, extras: ApiExtras = {}) {
   const server = createServer(async (req, res) => {
     const origin = req.headers.origin;
     const url = new URL(req.url ?? '/', 'http://localhost');
+    // Agent connector: its own authentication (agent keys), handled before any other route.
+    if (url.pathname === '/mcp' && extras.agent) return extras.agent(req, res);
     if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
       if (await serveStatic(url.pathname === '/' ? '/index.html' : url.pathname, res)) return;
       res.writeHead(404);

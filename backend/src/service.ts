@@ -292,7 +292,7 @@ export function createService(db: Db, notify: Notify) {
     buyToken: Address,
     sellAmount: bigint,
     mode: 'instant' | 'best' = 'best',
-    opts: { acceptImpact?: boolean } = {},
+    opts: { acceptImpact?: boolean; agentKeyId?: string } = {},
   ) {
     const user = db.getUser(tgId);
     if (!isCurrent(user) || !user?.session_key_enc) throw new UserError('Open your wallet first.');
@@ -355,6 +355,7 @@ export function createService(db: Db, notify: Notify) {
       nonce: order.nonce.toString(),
       signature,
       mode,
+      agent_key_id: opts.agentKeyId ?? null,
     });
     void runBatch();
     return { id, minOut: q.minOut, likely: q.likely, direct: q.direct, maxNetworkFee: q.maxNetworkFee, nextBatchInMs: mode === 'instant' ? 0 : msToNextBatch() };

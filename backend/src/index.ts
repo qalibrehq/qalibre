@@ -8,6 +8,8 @@ import { createOwnerOps } from './ownerops.js';
 import { createChat, type Chat } from './chat.js';
 import { createSocial } from './social.js';
 import { onTokenChecked } from './tokens.js';
+import { createAgentHandler } from './agent.js';
+import { esc } from './telegram.js';
 
 const db = openDb(config.dbPath);
 onTokenChecked((s) => db.recordCheck(s.token.address, s.verdict));
@@ -24,7 +26,18 @@ chat = createChat({ bot, db, svc, username: me.username });
 await setupBot(bot).catch((e) => console.error('bot setup', (e as Error).message));
 const social = createSocial({ bot, db, svc, username: me.username });
 startBot(bot, db, svc, chat, social);
-startApi(db, svc, createOwnerOps(db, { onApproved: (tgId, tokens) => chat?.afterApproval(tgId, tokens) }), { invite: (id) => social.inviteSummary(id), botUsername: me.username });
+// Agent connector (MCP): every order an agent places is announced to its owner with a one-tap revoke.
+const agent = createAgentHandler({
+  db,
+  svc,
+  announce: async (key, what) => {
+    await bot.sendMessage(key.tg_id, `<b>Your agent ${esc(key.label)}</b> ${esc(what)}.
+It settles at no worse than a direct swap. Not you? Revoke it now.`, {
+      reply_markup: { inline_keyboard: [[{ text: `Revoke ${key.label}`, callback_data: `ag:rv:${key.id}` }, { text: 'All agents', callback_data: 'ag:list' }]] },
+    });
+  },
+});
+startApi(db, svc, createOwnerOps(db, { onApproved: (tgId, tokens) => chat?.afterApproval(tgId, tokens) }), { invite: (id) => social.inviteSummary(id), botUsername: me.username, agent });
 
 setInterval(() => void svc.runBatch(), config.tickMs);
 

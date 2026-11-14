@@ -10,7 +10,7 @@ function order(o: Partial<OrderRow>): OrderRow {
   return {
     id: 'o1', tg_id: 1, account: '0x', sell_token: TOKENS.WQMS, buy_token: DOG, sell_amount: String(e18), min_buy_amount: '0', max_network_fee: '0',
     network_fee: '0', valid_to: 0, nonce: '0', signature: '0x', status: 'filled', mode: 'instant', created_ms: 0, confirmed: 1, reason: null,
-    tx_hash: '0x', buy_amount: '0', fee: '0', direct_quote: '0', batch_id: 1, created_at: 0, updated_at: 0, status_msg_id: null, ...o,
+    tx_hash: '0x', buy_amount: '0', fee: '0', direct_quote: '0', batch_id: 1, created_at: 0, updated_at: 0, status_msg_id: null, agent_key_id: null, ...o,
   };
 }
 

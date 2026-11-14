@@ -75,6 +75,24 @@ export interface OrderRow {
   updated_at: number;
   /** The chat message that tracks this order live (chat trading), if any. */
   status_msg_id: number | null;
+  /** Set when an AI agent placed the order through the agent connector (MCP), null when the user did. */
+  agent_key_id: string | null;
+}
+
+/** An agent connector key. Only a SHA-256 hash of the secret is stored; the secret is shown once at creation. */
+export interface AgentKeyRow {
+  id: string;
+  tg_id: number;
+  label: string;
+  key_hash: string;
+  prefix: string;
+  can_trade: number;
+  per_trade_wei: string;
+  per_day_wei: string;
+  created_at: number;
+  expires_at: number;
+  last_used_at: number | null;
+  revoked_at: number | null;
 }
 
 export function openDb(path: string) {
@@ -156,13 +174,27 @@ export function openDb(path: string) {
     );
   `);
 
-  for (const ddl of ['ALTER TABLE users ADD COLUMN pending_session_address TEXT', 'ALTER TABLE users ADD COLUMN pending_session_enc TEXT', 'ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN max_network_fee TEXT NOT NULL DEFAULT '0'", 'ALTER TABLE orders ADD COLUMN network_fee TEXT', 'ALTER TABLE users ADD COLUMN settlement TEXT', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER', 'ALTER TABLE orders ADD COLUMN status_msg_id INTEGER', 'ALTER TABLE users ADD COLUMN ref_code TEXT', 'ALTER TABLE users ADD COLUMN referrer_tg INTEGER', 'ALTER TABLE users ADD COLUMN referred_at INTEGER', 'ALTER TABLE cards ADD COLUMN msg_id INTEGER']) {
+  for (const ddl of ['ALTER TABLE users ADD COLUMN pending_session_address TEXT', 'ALTER TABLE users ADD COLUMN pending_session_enc TEXT', 'ALTER TABLE users ADD COLUMN last_drip_at INTEGER NOT NULL DEFAULT 0', "ALTER TABLE orders ADD COLUMN max_network_fee TEXT NOT NULL DEFAULT '0'", 'ALTER TABLE orders ADD COLUMN network_fee TEXT', 'ALTER TABLE users ADD COLUMN settlement TEXT', "ALTER TABLE orders ADD COLUMN mode TEXT NOT NULL DEFAULT 'best'", 'ALTER TABLE orders ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN created_ms INTEGER', 'ALTER TABLE orders ADD COLUMN status_msg_id INTEGER', 'ALTER TABLE users ADD COLUMN ref_code TEXT', 'ALTER TABLE users ADD COLUMN referrer_tg INTEGER', 'ALTER TABLE users ADD COLUMN referred_at INTEGER', 'ALTER TABLE cards ADD COLUMN msg_id INTEGER', 'ALTER TABLE orders ADD COLUMN agent_key_id TEXT']) {
     try {
       db.exec(ddl);
     } catch {
       /* column exists */
     }
   }
+  db.exec(`CREATE TABLE IF NOT EXISTS agent_keys (
+    id TEXT PRIMARY KEY,
+    tg_id INTEGER NOT NULL,
+    label TEXT NOT NULL,
+    key_hash TEXT NOT NULL UNIQUE,
+    prefix TEXT NOT NULL,
+    can_trade INTEGER NOT NULL,
+    per_trade_wei TEXT NOT NULL,
+    per_day_wei TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    revoked_at INTEGER
+  )`);
   try {
     db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_ref_code ON users(ref_code)');
   } catch {
@@ -198,10 +230,41 @@ export function openDb(path: string) {
     userByAccount(account: string): UserRow | undefined {
       return db.prepare('SELECT * FROM users WHERE lower(account) = lower(?)').get(account) as UserRow | undefined;
     },
-    insertOrder(o: Omit<OrderRow, 'status' | 'reason' | 'tx_hash' | 'buy_amount' | 'fee' | 'direct_quote' | 'batch_id' | 'created_at' | 'updated_at' | 'confirmed' | 'created_ms' | 'network_fee' | 'status_msg_id'>) {
+    insertOrder(o: Omit<OrderRow, 'status' | 'reason' | 'tx_hash' | 'buy_amount' | 'fee' | 'direct_quote' | 'batch_id' | 'created_at' | 'updated_at' | 'confirmed' | 'created_ms' | 'network_fee' | 'status_msg_id' | 'agent_key_id'> & { agent_key_id?: string | null }) {
       const t = now();
-      db.prepare(`INSERT INTO orders (id, tg_id, account, sell_token, buy_token, sell_amount, min_buy_amount, max_network_fee, valid_to, nonce, signature, status, mode, created_ms, created_at, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`).run(o.id, o.tg_id, o.account, o.sell_token, o.buy_token, o.sell_amount, o.min_buy_amount, o.max_network_fee, o.valid_to, o.nonce, o.signature, o.mode, Date.now(), t, t);
+      db.prepare(`INSERT INTO orders (id, tg_id, account, sell_token, buy_token, sell_amount, min_buy_amount, max_network_fee, valid_to, nonce, signature, status, mode, created_ms, created_at, updated_at, agent_key_id)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`).run(o.id, o.tg_id, o.account, o.sell_token, o.buy_token, o.sell_amount, o.min_buy_amount, o.max_network_fee, o.valid_to, o.nonce, o.signature, o.mode, Date.now(), t, t, o.agent_key_id ?? null);
+    },
+    // ---------- Agent connector keys ----------
+    createAgentKey(k: Omit<AgentKeyRow, 'last_used_at' | 'revoked_at'>) {
+      db.prepare('INSERT INTO agent_keys (id, tg_id, label, key_hash, prefix, can_trade, per_trade_wei, per_day_wei, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(k.id, k.tg_id, k.label, k.key_hash, k.prefix, k.can_trade, k.per_trade_wei, k.per_day_wei, k.created_at, k.expires_at);
+    },
+    agentKeyByHash(hash: string): AgentKeyRow | undefined {
+      return db.prepare('SELECT * FROM agent_keys WHERE key_hash = ?').get(hash) as AgentKeyRow | undefined;
+    },
+    agentKey(id: string): AgentKeyRow | undefined {
+      return db.prepare('SELECT * FROM agent_keys WHERE id = ?').get(id) as AgentKeyRow | undefined;
+    },
+    activeAgentKeys(tgId: number): AgentKeyRow[] {
+      return db.prepare('SELECT * FROM agent_keys WHERE tg_id = ? AND revoked_at IS NULL AND expires_at > ? ORDER BY created_at').all(tgId, now()) as unknown as AgentKeyRow[];
+    },
+    touchAgentKey(id: string) {
+      db.prepare('UPDATE agent_keys SET last_used_at = ? WHERE id = ?').run(now(), id);
+    },
+    /** Revokes only the owner's own key; returns whether anything changed. */
+    revokeAgentKey(id: string, tgId: number): boolean {
+      return Number(db.prepare('UPDATE agent_keys SET revoked_at = ? WHERE id = ? AND tg_id = ? AND revoked_at IS NULL').run(now(), id, tgId).changes) === 1;
+    },
+    revokeAllAgentKeys(tgId: number): number {
+      return Number(db.prepare('UPDATE agent_keys SET revoked_at = ? WHERE tg_id = ? AND revoked_at IS NULL').run(now(), tgId).changes);
+    },
+    /** QMS an agent key has committed in the last 24 hours (pending and filled orders; failed and expired do not count). */
+    agentSpentQms(keyId: string, wqms: string): bigint {
+      const rows = db.prepare("SELECT sell_amount FROM orders WHERE agent_key_id = ? AND lower(sell_token) = lower(?) AND status IN ('pending', 'filled') AND created_at > ?").all(keyId, wqms, now() - 86_400) as { sell_amount: string }[];
+      return rows.reduce((s, r) => s + BigInt(r.sell_amount), 0n);
+    },
+    recentOrders(tgId: number, limit: number): OrderRow[] {
+      return db.prepare('SELECT * FROM orders WHERE tg_id = ? ORDER BY created_at DESC LIMIT ?').all(tgId, limit) as unknown as OrderRow[];
     },
     markConfirmed(txHash: string) {
       db.prepare('UPDATE orders SET confirmed = 1 WHERE tx_hash = ?').run(txHash);
