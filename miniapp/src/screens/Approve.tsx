@@ -6,9 +6,9 @@ import { haptic, openLink, tg } from '../tg';
 import { Back } from '../ui/Brand';
 import { PinSheet } from '../ui/PinSheet';
 import { Done } from './Trade';
+import { bySeverity, FlagRow } from '../ui/Flag';
 import type { Nav } from '../App';
 
-const tone: Record<string, string> = { danger: 'var(--danger)', caution: 'var(--caution)', unknown: 'var(--graphite)', pass: 'var(--green)' };
 const verdictLabel: Record<Safety['verdict'], string> = { ok: 'Low risk', caution: 'Some risk', high: 'High risk', blocked: 'Blocked' };
 
 /**
@@ -94,11 +94,8 @@ export function Approve({ me, token, back, nav }: { me: Me; token: string; back?
           </div>
 
           <div className="rows" style={{ marginTop: 16 }}>
-            {s.findings.map((f, i) => (
-              <div key={i} className="row" style={{ alignItems: 'flex-start', flexDirection: 'column', gap: 3 }}>
-                <span style={{ color: tone[f.level], fontWeight: 600, fontSize: 14 }}>{f.title}</span>
-                <span className="muted" style={{ fontSize: 13, lineHeight: 1.5 }}>{f.detail}</span>
-              </div>
+            {[...s.findings].sort(bySeverity).map((f, i) => (
+              <div key={i} className="row" style={{ padding: 0 }}><FlagRow f={f} /></div>
             ))}
           </div>
 

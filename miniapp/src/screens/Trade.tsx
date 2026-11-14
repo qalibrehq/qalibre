@@ -8,6 +8,7 @@ import { TokenIcon } from '../ui/TokenIcon';
 import { TokenPicker } from '../ui/TokenPicker';
 import type { Nav } from '../App';
 import { TestFundsButton } from '../ui/TestFunds';
+import { bySeverity, FlagRow } from '../ui/Flag';
 
 type Phase = 'idle' | 'placing' | 'matching' | 'filled' | 'expired';
 const QMS = TOKENS.QMS as TokenRef;
@@ -250,7 +251,9 @@ export function Trade({ me, nav, side: initialSide, token: initialToken, toast, 
         {phase === 'idle' && confirmRisk && safety && (
           <div className="fade-in surface" style={{ padding: '18px 18px 14px', marginBottom: 10 }}>
             <p style={{ margin: 0, fontWeight: 600 }}>Careful: {asset.symbol} scores {safety.score}/100</p>
-            <p className="muted" style={{ margin: '4px 0 14px', fontSize: 14, lineHeight: 1.5 }}>{safety.findings.filter((f) => f.level === 'caution' || f.level === 'danger').slice(0, 3).map((f) => f.title).join(' · ')}</p>
+            <div style={{ margin: '6px 0 12px' }}>
+              {safety.findings.filter((f) => f.level === 'caution' || f.level === 'danger').sort(bySeverity).slice(0, 3).map((f, i) => <FlagRow key={i} f={f} detail={false} />)}
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
               <button className="btn btn-line" style={{ height: 46 }} onClick={() => setConfirmRisk(false)}>Cancel</button>
               <button className="btn btn-ink" style={{ height: 46 }} onClick={() => place(false, true)}>Buy anyway</button>

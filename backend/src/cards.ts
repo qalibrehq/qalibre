@@ -26,6 +26,11 @@ const C = {
   alarm: '#E5745F', // the one warm signal used on ink, for the verdict word only
 };
 
+/** Severity markers: one coloured dot per level, readable on both the green and the ink field. */
+export type FlagLevel = 'danger' | 'caution' | 'pass';
+const FLAG_DOT: Record<FlagLevel, string> = { danger: '#E5745F', caution: '#E2B866', pass: '#8FD4AE' };
+export interface Flag { level: FlagLevel; text: string }
+
 const x = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** Font size that fits `text` in `width`. Inter SemiBold averages ~0.56em per figure/letter at tight tracking. */
@@ -61,6 +66,24 @@ interface Card {
   token?: TokenMark;
   /** Who shared it: their Telegram photo and first name, in the footer. Only on cards a person shares. */
   person?: Person;
+  /** Up to three safety findings, as pills with a severity dot, under the detail line. */
+  flags?: Flag[];
+}
+
+/** A row of pills: dot + short label. Stops before the big q so nothing collides. */
+function flagRow(flags: Flag[], x0: number, y: number): string {
+  let cx = x0;
+  const out: string[] = [];
+  for (const f of flags.slice(0, 3)) {
+    const label = f.text.length > 30 ? f.text.slice(0, 29) + '…' : f.text;
+    const w = Math.round(label.length * 10.3 + 62);
+    if (cx + w > x0 + 700) break;
+    out.push(`<g><rect x="${cx}" y="${y}" width="${w}" height="44" rx="22" fill="${C.paper}" fill-opacity="0.08" stroke="${C.paper}" stroke-opacity="0.16"/>
+    <circle cx="${cx + 24}" cy="${y + 22}" r="7" fill="${FLAG_DOT[f.level]}"/>
+    <text x="${cx + 40}" y="${y + 29}" font-family="Inter" font-weight="500" font-size="20" fill="${C.paper}" fill-opacity="0.92">${x(label)}</text></g>`);
+    cx += w + 10;
+  }
+  return out.join('\n  ');
 }
 
 /** The person sharing a card. `photo` is a data URI of their Telegram photo, or null for their initial. */
@@ -130,7 +153,7 @@ function svg(c: Card, link: string): string {
   const cap = Math.round(heroSize * 0.73);
   // With a token, the header is its badge (64px) beside the symbol and the context; otherwise one quiet line.
   const headH = c.token ? 64 : 26;
-  const block = headH + 44 + cap + 72 + (c.detail ? 46 : 0);
+  const block = headH + 44 + cap + 72 + (c.detail ? 46 : 0) + (c.flags?.length ? 70 : 0);
   const top = Math.round(300 - block / 2) + (c.token ? 0 : 0);
   const overY = top + (c.token ? 0 : 26);
   const heroY = top + headH + 44 + cap;
@@ -155,6 +178,7 @@ function svg(c: Card, link: string): string {
   <text x="${L - Math.round(heroSize * 0.05)}" y="${heroY}" font-family="Inter" font-weight="600" font-size="${heroSize}" letter-spacing="${(-heroSize * 0.045).toFixed(1)}" fill="${c.heroTone === 'alarm' ? C.alarm : c.heroTone === 'brass' ? C.brass : C.paper}">${typeset(c.hero, heroSize)}${unit}</text>
   <text x="${L}" y="${lineY}" font-family="Inter" font-weight="500" font-size="32" letter-spacing="-0.3" fill="${c.lineTone === 'alarm' ? C.alarm : c.lineTone === 'brass' ? C.brass : C.paper}" fill-opacity="${c.lineTone && c.lineTone !== 'paper' ? 1 : 0.92}">${x(c.line)}</text>
   ${c.detail ? `<text x="${L}" y="${lineY + 46}" font-family="Inter" font-weight="400" font-size="22" fill="${C.paper}" fill-opacity="0.5">${typeset(c.detail, 22)}</text>` : ''}
+  ${c.flags?.length ? flagRow(c.flags, L, lineY + (c.detail ? 46 : 0) + 30) : ''}
   ${c.person ? personMark(c.person, L, H - 88, bg) : wordmark(L, H - 96, 30, C.paper, bg)}
   <text x="${W - L}" y="${H - 70}" text-anchor="end" font-family="Inter" font-weight="500" font-size="20" fill="${C.paper}" fill-opacity="0.6">${x(link)}</text>
 </svg>`;
@@ -242,7 +266,7 @@ export function fmtPrice(n: number): string {
 }
 
 /** The chat token card: the token, its price and pool, and its safety verdict in colour. */
-export function tokenCard(p: { token: TokenMark; name: string; priceQms: number; priceUsd: number; liquidityUsd: number; verdict: 'high' | 'caution' | 'ok'; score: number; link: string }): Buffer {
+export function tokenCard(p: { token: TokenMark; name: string; priceQms: number; priceUsd: number; liquidityUsd: number; verdict: 'high' | 'caution' | 'ok'; score: number; link: string; flags?: Flag[] }): Buffer {
   const label = p.verdict === 'high' ? 'High risk' : p.verdict === 'caution' ? 'Some risk' : 'Low risk';
   const short = `${p.token.address.slice(0, 6)}…${p.token.address.slice(-4)}`;
   return render(
@@ -255,9 +279,17 @@ export function tokenCard(p: { token: TokenMark; name: string; priceQms: number;
       line: `Safety ${p.score}/100. ${label}.`,
       lineTone: p.verdict === 'high' ? 'brass' : 'paper',
       detail: `$${fmtPrice(p.priceUsd)} each  ·  pool $${p.liquidityUsd >= 100 ? Math.round(p.liquidityUsd).toLocaleString('en-US') : p.liquidityUsd.toFixed(2)}  ·  ${short}`,
+      flags: p.flags,
     },
     p.link,
   );
+}
+
+/** What a card shows from a safety check: problems first, most serious first; a clean token shows what passed. */
+export function cardFlags(s: Safety): Flag[] {
+  const problems = [...s.findings.filter((f) => f.level === 'danger'), ...s.findings.filter((f) => f.level === 'caution')];
+  if (problems.length) return problems.slice(0, 3).map((f) => ({ level: f.level as FlagLevel, text: f.title }));
+  return s.findings.filter((f) => f.level === 'pass').slice(0, 3).map((f) => ({ level: 'pass', text: f.title }));
 }
 
 /** The verdict of a safety check in card words: a short headline and one sentence. */

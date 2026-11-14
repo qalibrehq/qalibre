@@ -79,7 +79,12 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has('preview')) 
     '/api/token': {
       token: { address: DOG, symbol: 'QTDOG', name: 'Qalibre Test Dog (testnet)', decimals: 18, verified: false },
       verdict: 'high', score: 30, tradable: true, priceQms: 1.6e-7, priceUsd: 5.4e-7, liquidityUsd: 2.7, checkedAt: Date.now(),
-      findings: [{ level: 'caution', title: 'Small pool', detail: '' }, { level: 'pass', title: 'You can sell it', detail: '' }],
+      findings: [
+        { level: 'pass', title: 'You can sell it', detail: 'A simulated buy and sale both went through.' },
+        { level: 'caution', title: 'Small pool', detail: 'About $2.70 available to trade. Even small trades move the price.' },
+        { level: 'danger', title: 'Wallets can be blacklisted', detail: 'The creator can block specific wallets from selling.' },
+        { level: 'caution', title: 'Creator can mint more', detail: 'New tokens can be created, which dilutes holders.' },
+      ],
     },
     '/api/stats': { savedUsd: 0.18, trades: 6, traders: 1, groups: 1, since: now - 86400, checked: 3, blocked: 2 },
   };

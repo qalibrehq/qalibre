@@ -15,7 +15,7 @@ import { config, TOKENS } from './config.js';
 import type { Db } from './db.js';
 import { Bot, esc } from './telegram.js';
 import { HighImpact, NeedsApproval, UserError, trimUnits, type Service } from './service.js';
-import { safetyCard, safetyHeadline, tokenCard } from './cards.js';
+import { cardFlags, safetyCard, safetyHeadline, tokenCard } from './cards.js';
 import { tokenLogo } from './logos.js';
 import { checkToken, poolOf, resolveToken, type Safety, type TokenInfo } from './tokens.js';
 
@@ -53,7 +53,10 @@ export function fmtToken(v: bigint, decimals: number): string {
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const verdictLabel: Record<Safety['verdict'], string> = { ok: 'Low risk', caution: 'Some risk', high: 'High risk', blocked: 'Blocked' };
-const mark: Record<string, string> = { danger: '✕', caution: '!', unknown: '?', pass: '✓' };
+// Severity in words, bold, the same scale as the coloured dots on cards and in the app. No emoji: Telegram text
+// cannot be coloured, and a plain word reads as more serious than a symbol.
+const mark: Record<string, string> = { danger: '<b>Risk</b>', caution: '<b>Watch</b>', unknown: '<b>Unchecked</b>', pass: '<b>OK</b>' };
+const SEVERITY_ORDER: Record<string, number> = { danger: 0, caution: 1, unknown: 2, pass: 3 };
 
 function appUrl(params: Record<string, string>): string | null {
   if (!config.miniAppUrl) return null;
@@ -87,10 +90,10 @@ function cardText(s: Safety, extra: string[] = [], caption = false): string {
   }
   if (!caption) lines.push(s.verdict === 'blocked' ? `<b>Blocked.</b> ${esc(s.reason ?? '')}` : `<b>Safety ${s.score}/100</b>  ${verdictLabel[s.verdict]}`);
   else lines.push('<b>What the check found</b>');
-  const shown = s.findings.filter((f) => f.level !== 'pass').slice(0, 5);
-  for (const f of shown) lines.push(`${mark[f.level]}  ${esc(f.title)}`);
+  const shown = s.findings.filter((f) => f.level !== 'pass').sort((a, b) => SEVERITY_ORDER[a.level]! - SEVERITY_ORDER[b.level]!).slice(0, 5);
+  for (const f of shown) lines.push(`${mark[f.level]}  ·  ${esc(f.title)}`);
   const passes = s.findings.filter((f) => f.level === 'pass').map((f) => f.title);
-  if (passes.length) lines.push(`${mark.pass}  ${esc(passes.slice(0, 3).join(' · '))}`);
+  if (passes.length) lines.push(`${mark.pass}  ·  ${esc(passes.slice(0, 3).join(', '))}`);
   if (extra.length) lines.push('', ...extra);
   lines.push('', `<i>Checked ${ago(s.checkedAt)}. A safety check reduces risk; it cannot guarantee a token is safe.</i>`);
   let text = lines.join('\n');
@@ -110,7 +113,7 @@ async function cardImage(s: Safety, link: string): Promise<Buffer> {
     const h = safetyHeadline(s);
     return safetyCard({ symbol: s.token.symbol, address: s.token.address, logo, verdict: s.verdict, score: s.score, headline: h.headline, reason: h.reason, link });
   }
-  return tokenCard({ token: { symbol: s.token.symbol, address: s.token.address, logo }, name: s.token.name, priceQms: s.priceQms, priceUsd: s.priceUsd, liquidityUsd: s.liquidityUsd, verdict: s.verdict, score: s.score, link });
+  return tokenCard({ token: { symbol: s.token.symbol, address: s.token.address, logo }, name: s.token.name, priceQms: s.priceQms, priceUsd: s.priceUsd, liquidityUsd: s.liquidityUsd, verdict: s.verdict, score: s.score, link, flags: cardFlags(s) });
 }
 
 /** Parse an amount typed by a person: "0.5", "1,000", ".25". Returns null if it is not a clean number. */
@@ -250,7 +253,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
         const s = await checkToken(token.address);
         if (s.verdict === 'high') {
           confirming.set(tgId, { token: token.address, side, amount, acceptImpact: Boolean(opts.acceptImpact), until: Date.now() + 120_000 });
-          await bot.sendMessage(tgId, `<b>Careful: ${esc(token.symbol)} scores ${s.score}/100.</b>\n${s.findings.filter((f) => f.level === 'caution' || f.level === 'danger').slice(0, 3).map((f) => esc(f.title)).join('  ·  ')}\n\nStill want to buy it with ${trimUnits(amount, 18)} QMS?`, {
+          await bot.sendMessage(tgId, `<b>Careful: ${esc(token.symbol)} scores ${s.score}/100.</b>\n${s.findings.filter((f) => f.level === 'caution' || f.level === 'danger').sort((a, b) => SEVERITY_ORDER[a.level]! - SEVERITY_ORDER[b.level]!).slice(0, 3).map((f) => `${mark[f.level]}  ·  ${esc(f.title)}`).join('\n')}\n\nStill want to buy it with ${trimUnits(amount, 18)} QMS?`, {
             reply_markup: { inline_keyboard: [[{ text: 'Buy anyway', callback_data: 'y' }, { text: 'Cancel', callback_data: 'n' }]] },
           });
           return;
