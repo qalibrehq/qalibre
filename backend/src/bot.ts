@@ -7,6 +7,7 @@ import type { Chat } from './chat.js';
 import type { Social } from './social.js';
 import { AGENT_KEY_DAYS, hashKey, issueAgentKey } from './agent.js';
 import { detectSecret, GROUP_WARNING, SECRET_WARNING } from './secrets.js';
+import { cleanText } from './tokens.js';
 
 interface Update {
   update_id: number;
@@ -174,6 +175,51 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
     return { text: lines.join('\n'), kb };
   }
 
+  const AGENT_NAMES = ['Claude', 'Cursor', 'ChatGPT', 'Gemini'];
+  /** Users who tapped "Another name" and owe us a typed name (expires after 5 minutes). */
+  const pendingName = new Map<number, { canTrade: boolean; at: number }>();
+
+  async function createAgentKey(tgId: number, canTrade: boolean, rawName: string) {
+    if (!svc.isRegistered(tgId)) return void (await bot.sendMessage(tgId, 'Create your wallet first.'));
+    if (db.activeAgentKeys(tgId).length >= MAX_AGENT_KEYS) return void (await bot.sendMessage(tgId, `You can have up to ${MAX_AGENT_KEYS} agent keys. Revoke one with /agent first.`));
+    const taken = new Set(db.activeAgentKeys(tgId).map((x) => x.label.toLowerCase()));
+    let label = cleanText(rawName, 24) || 'Agent';
+    // Two agents with one name would make the notices ambiguous: number the second one.
+    for (let i = 2; taken.has(label.toLowerCase()); i++) label = `${cleanText(rawName, 20) || 'Agent'} ${i}`;
+    const { secret } = issueAgentKey(db, tgId, { label, canTrade });
+    const url = mcpUrl();
+    const sent = (await bot.sendMessage(
+      tgId,
+      [
+        `<b>${esc(label)} is ready</b>  ·  ${canTrade ? 'can trade' : 'read-only'}`,
+        '',
+        `<code>${secret}</code>`,
+        '',
+        'Shown once. Keep it private: anyone with it can do what this agent can. This message deletes itself in 15 minutes.',
+        '',
+        '<b>1. Connect</b>  (Claude Code: paste in a terminal, not a chat)',
+        `<code>claude mcp add --transport http qalibre ${url} --header "Authorization: Bearer ${secret}"</code>`,
+        'Cursor, VS Code and others: qalibre.app/agents',
+        '',
+        '<b>2. Then ask it</b>',
+        `<code>Check my Qalibre wallet and tell me what I hold.</code>`,
+        '',
+        `Expires in ${AGENT_KEY_DAYS} days. Revoke any time with /agent.`,
+      ].join('\n'),
+    )) as { message_id?: number };
+    if (sent?.message_id) setTimeout(() => void bot.call('deleteMessage', { chat_id: tgId, message_id: sent.message_id }).catch(() => undefined), 15 * 60_000);
+  }
+
+  /** A typed agent name, if we asked for one in the last 5 minutes. Returns true when the message was consumed. */
+  async function onAgentName(tgId: number, text: string): Promise<boolean> {
+    const p = pendingName.get(tgId);
+    if (!p) return false;
+    pendingName.delete(tgId);
+    if (Date.now() - p.at > 5 * 60_000 || text.startsWith('/')) return false;
+    await createAgentKey(tgId, p.canTrade, text);
+    return true;
+  }
+
   async function onAgent(q: { id: string; from: { id: number }; data?: string; message?: { message_id: number; chat: { id: number } } }) {
     const tgId = q.from.id;
     const d = q.data ?? '';
@@ -182,35 +228,33 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
       const p = agentPage(tgId);
       if (msgId) await bot.editMessage(tgId, msgId, p.text, { reply_markup: { inline_keyboard: p.kb } }).catch(() => undefined);
     };
-    if (d === 'ag:new:t' || d === 'ag:new:r') {
+    // Step 1: choose the kind of key. Step 2: name the agent (quick picks, or type a name). Step 3: the key.
+    const k = /^ag:new:(t|r)$/.exec(d);
+    if (k) {
       if (!svc.isRegistered(tgId)) return void (await bot.answer(q.id, 'Create your wallet first.', true));
       if (db.activeAgentKeys(tgId).length >= MAX_AGENT_KEYS) return void (await bot.answer(q.id, `You can have up to ${MAX_AGENT_KEYS} agent keys. Revoke one first.`, true));
       await bot.answer(q.id);
-      const canTrade = d === 'ag:new:t';
-      const n = db.activeAgentKeys(tgId).length + 1;
-      const { secret } = issueAgentKey(db, tgId, { label: `Agent ${n}`, canTrade });
-      const url = mcpUrl();
-      const sent = (await bot.sendMessage(
-        tgId,
-        [
-          `<b>Your new ${canTrade ? 'trading' : 'read-only'} agent key</b>`,
-          '',
-          `<code>${secret}</code>`,
-          '',
-          'Shown once. Anyone with this key can do what an agent can, so keep it private. This message deletes itself in 15 minutes.',
-          '',
-          '<b>1. Connect</b> (Claude Code, tap to copy)',
-          `<code>claude mcp add --transport http qalibre ${url} --header "Authorization: Bearer ${secret}"</code>`,
-          'Cursor, VS Code and others: qalibre.app/agents',
-          '',
-          '<b>2. Then ask your agent</b>',
-          `<code>Check my Qalibre wallet and tell me what I hold.</code>`,
-          '',
-          `Expires in ${AGENT_KEY_DAYS} days. Revoke any time with /agent.`,
-        ].join('\n'),
-      )) as { message_id?: number };
-      if (sent?.message_id) setTimeout(() => void bot.call('deleteMessage', { chat_id: tgId, message_id: sent.message_id }).catch(() => undefined), 15 * 60_000);
-      return refresh();
+      const kind = k[1]!;
+      return void (await bot.sendMessage(tgId, '<b>What should we call this agent?</b>\nThe name appears in every message about what it does.', {
+        reply_markup: {
+          inline_keyboard: [
+            AGENT_NAMES.slice(0, 3).map((n) => ({ text: n, callback_data: `ag:mk:${kind}:${n}` })),
+            [{ text: AGENT_NAMES[3]!, callback_data: `ag:mk:${kind}:${AGENT_NAMES[3]}` }, { text: 'Another name', callback_data: `ag:nm:${kind}` }],
+          ],
+        },
+      }));
+    }
+    const mk = /^ag:mk:(t|r):([A-Za-z]{1,16})$/.exec(d);
+    if (mk && AGENT_NAMES.includes(mk[2]!)) {
+      await bot.answer(q.id);
+      if (msgId) void bot.call('deleteMessage', { chat_id: tgId, message_id: msgId }).catch(() => undefined);
+      return createAgentKey(tgId, mk[1] === 't', mk[2]!);
+    }
+    const nm = /^ag:nm:(t|r)$/.exec(d);
+    if (nm) {
+      await bot.answer(q.id);
+      pendingName.set(tgId, { canTrade: nm[1] === 't', at: Date.now() });
+      return void (await bot.sendMessage(tgId, 'Type a name for this agent, up to 24 characters.', { reply_markup: { force_reply: true, input_field_placeholder: 'For example: Research bot' } }));
     }
     if (d === 'ag:rvall') {
       const n = db.revokeAllAgentKeys(tgId);
@@ -295,6 +339,7 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
     if (cmd === '/start' && payload && (await chat.onStartPayload(id, payload))) return;
     // An invite link: remember the inviter, then continue to the normal welcome.
     if (cmd === '/start' && payload) social.applyInvite(id, payload);
+    if (await onAgentName(id, msg.text)) return;
     if (cmd === '/invite') return social.inviteMessage(id);
     if (cmd === '/agent' || cmd === '/agents') {
       const p = agentPage(id);
