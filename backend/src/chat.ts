@@ -159,6 +159,33 @@ export function buySizes(spendable: bigint, perTrade: bigint, qmsReserve: bigint
   return fits.slice(-3);
 }
 
+/**
+ * Live elapsed timers on pending trades. The final update calls stop(), which waits for any edit in flight, so a
+ * timer can never overwrite the result. Ticks every 2 seconds (well inside Telegram's edit limits), up to 3 minutes.
+ */
+export function createTickers(edit: (tgId: number, msgId: number, html: string) => Promise<unknown>, isPending: (orderId: string) => boolean, everyMs = 2_000) {
+  const live = new Map<string, { stopped: boolean; editing: Promise<unknown>; timer: ReturnType<typeof setInterval> }>();
+  async function stop(orderId: string) {
+    const t = live.get(orderId);
+    if (!t) return;
+    t.stopped = true;
+    clearInterval(t.timer);
+    live.delete(orderId);
+    await t.editing;
+  }
+  function start(tgId: number, orderId: string, msgId: number, body: (secs: number) => string) {
+    const started = Date.now();
+    const t = { stopped: false, editing: Promise.resolve() as Promise<unknown>, timer: undefined as unknown as ReturnType<typeof setInterval> };
+    t.timer = setInterval(() => {
+      const secs = Math.round((Date.now() - started) / 1000);
+      if (t.stopped || secs > 180 || !isPending(orderId)) return void stop(orderId);
+      t.editing = edit(tgId, msgId, body(secs)).catch(() => undefined);
+    }, everyMs);
+    live.set(orderId, t);
+  }
+  return { start, stop, size: () => live.size };
+}
+
 export function createChat({ bot, db, svc, username }: ChatDeps) {
   /** Waiting for a typed amount after "Custom", per user. */
   const awaiting = new Map<number, { token: Address; side: 'buy' | 'sell'; until: number }>();
@@ -301,8 +328,12 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
         throw e;
       }
       const buyInfo = side === 'buy' ? token : { symbol: 'QMS', decimals: 18 };
-      const status = (await bot.sendMessage(tgId, [`<b>${label}</b>`, `Done in about ten seconds. You\'ll get at least ${fmtToken(r.minOut, buyInfo.decimals)} ${esc(buyInfo.symbol)}, never less than a direct swap.`].join('\n'))) as { message_id: number };
+      const floor = `You'll get at least ${fmtToken(r.minOut, buyInfo.decimals)} ${esc(buyInfo.symbol)}, never less than a direct swap.`;
+      // A live elapsed timer, not a countdown: QMS block times vary, so a countdown would sometimes lie.
+      const body = (secs: number) => [`<b>${label}</b>`, `Sent. Confirming in the next QMS block (${secs}s)`, floor].join('\n');
+      const status = (await bot.sendMessage(tgId, body(0))) as { message_id: number };
       db.setStatusMessage(r.id, status.message_id);
+      startTicker(tgId, r.id, status.message_id, body);
     } catch (e) {
       await bot.sendMessage(tgId, esc(e instanceof UserError ? e.message : 'Something went wrong on our side placing that order. Nothing was traded, so you can safely try again.'));
       if (!(e instanceof UserError)) console.error('chat trade', (e as Error).message);
@@ -326,8 +357,13 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
   // Order updates: edit the status message in place
   // ---------------------------------------------------------------------------------------------
 
+  const tickers = createTickers((tgId, msgId, html) => bot.editMessage(tgId, msgId, html), (id) => db.getOrder(id)?.status === 'pending');
+  const startTicker = tickers.start;
+  const stopTicker = tickers.stop;
+
   /** Returns true when the update was shown by editing a chat status message. */
   async function onOrderUpdate(tgId: number, html: string, orderId: string, kind: string): Promise<boolean> {
+    await stopTicker(orderId);
     const o = db.getOrder(orderId);
     if (!o?.status_msg_id) return false;
     const kb: Keyboard = [];
