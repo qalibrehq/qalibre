@@ -81,7 +81,7 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
     return {
       text: [
         `<b>$${p.totalUsd.toFixed(2)}</b>`,
-        `${fmtSig(qms)} QMS  ·  ${usdc.toFixed(2)} USDC${held ? `  ·  ${held} ${held === 1 ? 'token' : 'tokens'}` : ''}`,
+        held ? `${fmtSig(qms)} QMS, ${usdc.toFixed(2)} USDC and ${held} ${held === 1 ? 'token' : 'tokens'}` : `${fmtSig(qms)} QMS and ${usdc.toFixed(2)} USDC`,
         '',
         p.session.active ? 'Paste any token address to check it and trade.' : '<b>Trading is off.</b> Turn it on in your Wallet to trade from chat.',
       ].join('\n'),
@@ -110,7 +110,11 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
         '',
         '<b>In groups.</b> Add Qalibre to a group and it warns everyone when someone posts a scam token. Nobody can trade from a group.',
         '',
-        '<b>Official links.</b> News: t.me/qalibre · X: x.com/qalibreapp · qalibre.app',
+        '<b>Official links</b>',
+        'News: t.me/qalibre',
+        'X: x.com/qalibreapp',
+        'Website: qalibre.app',
+        '',
         'We never message you first and never ask for your key or PIN.',
       ].join('\n'),
       kb: [[{ text: 'Fees', callback_data: 'm:fees' }, { text: 'Is it safe?', callback_data: 'm:sec' }], back],
@@ -158,10 +162,10 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
       '<b>AI agents</b>',
       '',
       'Connect Claude or another AI agent to Qalibre. It can check tokens, quote and trade inside your wallet, and nothing else:',
-      '· It can never withdraw or send money out.',
-      '· It can only buy tokens you approved, never high-risk ones.',
-      '· Its own caps: 1 QMS per trade, 5 QMS a day, inside your wallet limits.',
-      '· You get a message for every trade it makes, with a Revoke button.',
+      'It can never withdraw or send money out.',
+      'It can only buy tokens you approved, never high-risk ones.',
+      'It has its own caps: 1 QMS per trade and 5 QMS a day, inside your wallet limits.',
+      'You get a message for every trade it makes, with a Revoke button.',
       '',
     ];
     if (keys.length) {

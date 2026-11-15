@@ -67,8 +67,8 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
     const caption = [
       `<code>${link}</code>`,
       '',
-      `Invited ${r.invited}  ·  trading ${r.trading}`,
-      `Earned ${fmtSig(Number(r.earned) / 1e18)} QMS  ·  paid ${fmtSig(Number(r.paid) / 1e18)} QMS`,
+      `Invited ${r.invited}, ${r.trading} trading`,
+      `Earned ${fmtSig(Number(r.earned) / 1e18)} QMS, ${fmtSig(Number(r.paid) / 1e18)} QMS paid out`,
       '',
       `<i>You earn ${share}% of Qalibre's fee on their trades for ${REFERRAL_DAYS} days, paid weekly in QMS to your wallet. It comes out of our fee, so your friends pay the same.</i>`,
     ].join('\n');
@@ -231,11 +231,16 @@ export function createSocial({ bot, db, svc, username }: { bot: Bot; db: Db; svc
   async function statsMessage(chatId: number, extra: Record<string, unknown> = {}) {
     const st = await svc.publicStats();
     const png = statsCard({ checked: st.checked, blocked: st.blocked, trades: st.trades, traders: st.traders, savedUsd: st.savedUsd, link: shortLink });
-    const caption = [
-      `<b>${st.blocked.toLocaleString('en-US')}</b> scam ${st.blocked === 1 ? 'token' : 'tokens'} blocked out of <b>${st.checked.toLocaleString('en-US')}</b> checked.`,
-      `${st.trades.toLocaleString('en-US')} trades by ${st.traders.toLocaleString('en-US')} ${st.traders === 1 ? 'trader' : 'traders'}  ·  ${st.groups.toLocaleString('en-US')} ${st.groups === 1 ? 'group' : 'groups'} protected`,
-      st.savedUsd >= 0.01 ? `$${st.savedUsd.toFixed(2)} saved versus swapping directly.` : 'No trade has needed a better match yet: every one settled at the direct QWAP price, with no Qalibre fee.',
-    ].join('\n');
+    // Only real, non-zero numbers, in plain sentences. A zero is never advertised.
+    const n = (v: number) => v.toLocaleString('en-US');
+    const plural = (v: number, one: string, many: string) => `${n(v)} ${v === 1 ? one : many}`;
+    const lines = ['<b>Qalibre so far</b>'];
+    if (st.checked > 0) lines.push(`${plural(st.checked, 'token', 'tokens')} checked for scams${st.blocked > 0 ? `, ${n(st.blocked)} blocked` : ''}`);
+    if (st.trades > 0) lines.push(`${plural(st.trades, 'trade', 'trades')} settled, none below a direct swap`);
+    if (st.savedUsd >= 0.01) lines.push(`$${st.savedUsd.toFixed(2)} saved compared with swapping directly`);
+    if (st.groups > 0) lines.push(`Watching ${plural(st.groups, 'group chat', 'group chats')} for scams`);
+    if (lines.length === 1) lines.push('Just getting started. Paste any token to run the first check.');
+    const caption = lines.join('\n');
     await bot.sendPhoto(chatId, png, caption, extra);
   }
 

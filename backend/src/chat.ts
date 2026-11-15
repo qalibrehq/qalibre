@@ -74,7 +74,7 @@ function findingsBlock(findings: Safety['findings'], detail = true, maxProblems 
     const items = findings.filter((f) => g.levels.includes(f.level));
     if (!items.length) continue;
     out.push(`<b>${g.heading}</b>`);
-    if (g.heading === 'Looks fine') out.push(items.slice(0, 4).map((f) => esc(f.title)).join('  ·  '));
+    if (g.heading === 'Looks fine') out.push(items.slice(0, 4).map((f) => esc(f.title)).join(', '));
     else for (const f of items.slice(0, maxProblems)) out.push(findingLine(f, detail));
     out.push('');
   }
@@ -401,12 +401,12 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
     const lines = [`<b>Portfolio</b>  $${p.totalUsd.toFixed(2)}`, '']; // totalUsd already includes token positions
     const qms = p.holdings[0]!.amount + p.unwrappedQms;
     lines.push(`<b>QMS</b>  ${fmtSig(qms)}  ·  $${(qms * usd).toFixed(2)}`);
-    lines.push(`<b>USDC</b>  ${p.holdings[1]!.amount.toFixed(2)}  ·  $${p.holdings[1]!.valueUsd.toFixed(2)}`);
+    lines.push(`<b>USDC</b>  ${p.holdings[1]!.amount.toFixed(2)} ($${p.holdings[1]!.valueUsd.toFixed(2)})`);
     const kb: Keyboard = [];
     for (const x of pos) {
       const exit = Number(x.exitQms) / 1e18;
       const pnl = x.pnlPct === null ? 'cost unknown' : `${x.pnlPct >= 0 ? '+' : ''}${x.pnlPct.toFixed(1)}%`;
-      lines.push(`<b>${esc(x.token.symbol)}</b>  ${fmtToken(x.balance, x.token.decimals)}  ·  ${fmtSig(exit)} QMS  ·  ${pnl}`);
+      lines.push(`<b>${esc(x.token.symbol)}</b>  ${fmtToken(x.balance, x.token.decimals)}, worth ${fmtSig(exit)} QMS, ${pnl}`);
       const card = newCard(tgId, x.token.address);
       kb.push([
         { text: x.token.symbol, callback_data: `c:${card}:r` },
