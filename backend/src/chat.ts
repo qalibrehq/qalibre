@@ -15,7 +15,7 @@ import { config, TOKENS } from './config.js';
 import type { Db } from './db.js';
 import { Bot, esc } from './telegram.js';
 import { HighImpact, NeedsApproval, UserError, trimUnits, type Service } from './service.js';
-import { cardFlags, receiptCard, safetyCard, safetyHeadline, tokenCard } from './cards.js';
+import { cardFlags, portfolioCard, receiptCard, safetyCard, safetyHeadline, tokenCard, type Person, type PortfolioRow } from './cards.js';
 import { improvement } from './value.js';
 import { salePnlPct, settledSecs } from './receipt.js';
 import type { OrderRow } from './db.js';
@@ -47,6 +47,16 @@ export function fmtSig(n: number, sig = 4): string {
   if (abs >= 1) return n.toLocaleString('en-US', { maximumFractionDigits: abs >= 1000 ? 0 : 2 });
   const decimals = Math.min(18, sig - 1 - Math.floor(Math.log10(abs)));
   return n.toFixed(decimals).replace(/\.?0+$/, '');
+}
+
+/** Short amounts for tables: 1.2M, 48,210, 12.48, 0.0012. */
+export function compact(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1).replace(/\.0$/, '')}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1000) return Math.round(n).toLocaleString('en-US');
+  if (n >= 1) return n.toFixed(2).replace(/\.?0+$/, '');
+  if (n === 0) return '0';
+  return n.toPrecision(2).replace(/\.?0+$/, '');
 }
 
 export function fmtToken(v: bigint, decimals: number): string {
@@ -337,6 +347,9 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       const status = (await bot.sendMessage(tgId, body(0))) as { message_id: number };
       db.setStatusMessage(r.id, status.message_id);
       startTicker(tgId, r.id, status.message_id, body);
+      // Fetch the photo and logo for the receipt now, while the order waits for its block, not after the fill.
+      void bot.userPhoto(tgId).catch(() => null);
+      void tokenLogo(token.address as Address).catch(() => null);
     } catch (e) {
       await bot.sendMessage(tgId, esc(e instanceof UserError ? e.message : 'Something went wrong on our side placing that order. Nothing was traded, so you can safely try again.'));
       if (!(e instanceof UserError)) console.error('chat trade', (e as Error).message);
@@ -364,6 +377,10 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
   const startTicker = tickers.start;
   const stopTicker = tickers.stop;
 
+  async function personOf(tgId: number): Promise<Person> {
+    return { name: db.getUser(tgId)?.first_name?.trim() || 'A Qalibre trader', photo: await bot.userPhoto(tgId) };
+  }
+
   /** The receipt card for a settled trade: what you got, the price floor held, how long it took, and on sells the result. */
   async function receiptPng(o: OrderRow): Promise<Buffer> {
     const [buy, sell] = await Promise.all([tokenInfo(o.buy_token as Address), tokenInfo(o.sell_token as Address)]);
@@ -384,6 +401,7 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
       settledSecs: settledSecs(o),
       pnlPct: sold && !bothCore ? salePnlPct(db.userOrders(o.tg_id, 1000), o, WQMS) : null,
       tx: o.tx_hash ?? '',
+      person: await personOf(o.tg_id),
       link: `t.me/${username}`,
     });
   }
@@ -394,18 +412,20 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
     const o = db.getOrder(orderId);
     if (!o) return false;
     if (kind === 'filled') {
-      const png = await receiptPng(o).catch((e) => (console.error('receipt card', (e as Error).message), null));
-      if (png) {
-        try {
-          const kb = fillKeyboard(tgId, o);
+      // Speed first: the timer turns into the result the instant the trade settles, with nothing drawn in the
+      // way. The receipt card follows a moment later and takes that message's place.
+      const kb = fillKeyboard(tgId, o);
+      const shown = o.status_msg_id ? await bot.editMessage(tgId, o.status_msg_id, html, { reply_markup: { inline_keyboard: kb } }).then(() => true, () => false) : false;
+      void receiptPng(o)
+        .then(async (png) => {
           await bot.sendPhoto(tgId, png, html, kb.length ? { reply_markup: { inline_keyboard: kb } } : {});
-          // The receipt replaces the live timer, so the chat keeps one clean message per trade.
-          if (o.status_msg_id) await bot.call('deleteMessage', { chat_id: tgId, message_id: o.status_msg_id }).catch(() => {});
-          return true;
-        } catch (e) {
-          console.error('receipt send', (e as Error).message); // fall back to text below
-        }
-      }
+          if (shown && o.status_msg_id) await bot.call('deleteMessage', { chat_id: tgId, message_id: o.status_msg_id }).catch(() => {});
+        })
+        .catch(async (e) => {
+          console.error('receipt card', (e as Error).message);
+          if (!shown) await bot.sendMessage(tgId, html, { reply_markup: { inline_keyboard: kb } }).catch(() => {}); // never a silent fill
+        });
+      return true;
     }
     if (!o.status_msg_id) return false;
     try {
@@ -444,15 +464,28 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
     }
     const pos = await svc.positions(tgId);
     const usd = p.price.usdcPerQms;
-    const lines = [`<b>Portfolio</b>  $${p.totalUsd.toFixed(2)}`, '']; // totalUsd already includes token positions
     const qms = p.holdings[0]!.amount + p.unwrappedQms;
-    lines.push(`<b>QMS</b>  ${fmtSig(qms)}  ·  $${(qms * usd).toFixed(2)}`);
-    lines.push(`<b>USDC</b>  ${p.holdings[1]!.amount.toFixed(2)} ($${p.holdings[1]!.valueUsd.toFixed(2)})`);
+    const tokens = [...pos].map((x) => ({ x, valueUsd: (Number(x.exitQms) / 1e18) * usd })).sort((a, b) => b.valueUsd - a.valueUsd);
+    // QMS and USDC lead; tokens follow by value. Balances worth under a cent fold into "and N more".
+    const shown = tokens.filter((t) => t.valueUsd >= 0.01);
+    const rows: PortfolioRow[] = [
+      { token: { symbol: 'QMS', address: TOKENS.WQMS, logo: await tokenLogo(TOKENS.WQMS) }, amount: `${compact(qms)} QMS`, valueUsd: qms * usd, changePct: null },
+      { token: { symbol: 'USDC', address: TOKENS.USDC, logo: await tokenLogo(TOKENS.USDC) }, amount: `${compact(p.holdings[1]!.amount)} USDC`, valueUsd: p.holdings[1]!.valueUsd, changePct: null },
+      ...(await Promise.all(
+        shown.slice(0, 4).map(async ({ x, valueUsd }) => ({
+          token: { symbol: x.token.symbol, address: x.token.address, logo: await tokenLogo(x.token.address) },
+          amount: `${compact(Number(x.balance) / 10 ** x.token.decimals)} ${x.token.symbol}`,
+          valueUsd,
+          changePct: x.pnlPct,
+        })),
+      )),
+    ];
+    const known = pos.filter((x) => x.pnlQms !== null);
+    const changeUsd = known.length ? (known.reduce((a, x) => a + Number(x.pnlQms), 0) / 1e18) * usd : null;
+
+    // Buttons for the largest few tokens only, so the keyboard stays short however many you hold.
     const kb: Keyboard = [];
-    for (const x of pos) {
-      const exit = Number(x.exitQms) / 1e18;
-      const pnl = x.pnlPct === null ? 'cost unknown' : `${x.pnlPct >= 0 ? '+' : ''}${x.pnlPct.toFixed(1)}%`;
-      lines.push(`<b>${esc(x.token.symbol)}</b>  ${fmtToken(x.balance, x.token.decimals)}, worth ${fmtSig(exit)} QMS, ${pnl}`);
+    for (const { x } of shown.slice(0, 4)) {
       const card = newCard(tgId, x.token.address);
       kb.push([
         { text: x.token.symbol, callback_data: `c:${card}:r` },
@@ -460,12 +493,22 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
         { text: 'Sell all', callback_data: `c:${card}:s100` },
       ]);
     }
-    if (pos.length) lines.push('', '<i>Token values are what selling all of it would return from the pool right now. Profit counts only tokens bought through Qalibre.</i>');
-    else lines.push('', 'Paste a token address to see its card and trade it here.');
-    if (p.trades > 0) kb.push([{ text: 'Share my savings', callback_data: 'sv' }]);
     const url = appUrl({});
-    if (url) kb.push([{ text: 'Open Qalibre', web_app: { url } }]);
-    await bot.sendMessage(tgId, lines.join('\n'), { reply_markup: { inline_keyboard: kb } });
+    const last: Keyboard[number] = [];
+    if (p.trades > 0) last.push({ text: 'Share my savings', callback_data: 'sv' });
+    if (url) last.push({ text: 'Open Qalibre', web_app: { url } });
+    if (last.length) kb.push(last);
+    const caption = pos.length
+      ? '<i>Token values are what selling would return from the pool right now. Profit counts tokens bought through Qalibre.</i>'
+      : 'Paste a token address to see its card and trade it here.';
+    try {
+      const png = await portfolioCard({ totalUsd: p.totalUsd, changeUsd, rows, more: tokens.length - Math.min(4, shown.length), person: await personOf(tgId), link: `t.me/${username}` });
+      await bot.sendPhoto(tgId, png, caption, { reply_markup: { inline_keyboard: kb } });
+    } catch (e) {
+      console.error('portfolio card', (e as Error).message);
+      const lines = [`<b>Portfolio</b>  $${p.totalUsd.toFixed(2)}`, '', ...rows.map((r) => `<b>${esc(r.token.symbol)}</b>  ${esc(r.amount)}, $${r.valueUsd.toFixed(2)}${r.changePct === null ? '' : `, ${r.changePct >= 0 ? '+' : ''}${r.changePct.toFixed(1)}%`}`)];
+      await bot.sendMessage(tgId, lines.join('\n'), { reply_markup: { inline_keyboard: kb } });
+    }
   }
 
   async function limitsMessage(tgId: number) {

@@ -8,7 +8,7 @@
  * 1200x675 (16:9) shows uncropped in Telegram and on X.
  */
 import { join } from 'node:path';
-import { Resvg } from '@resvg/resvg-js';
+import { Resvg, renderAsync } from '@resvg/resvg-js';
 import { ROOT } from './config.js';
 import { emblem } from './logos.js';
 import type { Safety } from './tokens.js';
@@ -184,6 +184,12 @@ function svg(c: Card, link: string): string {
 </svg>`;
 }
 
+/** Draw on a background thread, so cards sent on every trade never hold up the trading engine. */
+async function renderOff(doc: string): Promise<Buffer> {
+  const img = await renderAsync(doc, { font: { fontFiles: FONTS, loadSystemFonts: false, defaultFontFamily: 'Inter' }, fitTo: { mode: 'width', value: W } });
+  return Buffer.from(img.asPng());
+}
+
 function render(c: Card, link: string): Buffer {
   const r = new Resvg(svg(c, link), { font: { fontFiles: FONTS, loadSystemFonts: false, defaultFontFamily: 'Inter' }, fitTo: { mode: 'width', value: W } });
   return Buffer.from(r.render().asPng());
@@ -209,15 +215,17 @@ export function receiptCard(p: {
   settledSecs: number | null;
   pnlPct: number | null;
   tx: string;
+  person?: Person;
   link: string;
-}): Buffer {
+}): Promise<Buffer> {
   const loss = p.pnlPct !== null && p.pnlPct < 0;
   const flags: Flag[] = [
     { level: 'pass', text: p.vsDirectPct > 0.0005 ? `Beat direct swap by ${p.vsDirectPct.toFixed(2)}%` : 'At the direct swap price' },
   ];
   if (p.settledSecs !== null && p.settledSecs > 0) flags.push({ level: 'pass', text: `Settled in ${p.settledSecs}s` });
   const pnl = p.pnlPct === null ? null : `${p.pnlPct >= 0 ? '+' : '−'}${Math.abs(p.pnlPct).toFixed(1)}% on this position`;
-  return render(
+  return renderOff(
+    svg(
     {
       field: loss ? 'ink' : 'green',
       token: p.token,
@@ -226,11 +234,12 @@ export function receiptCard(p: {
       unit: p.gotSymbol,
       line: pnl ?? `for ${p.paid} ${p.paidSymbol}`,
       lineTone: pnl ? (loss ? 'alarm' : 'gain') : 'paper',
+      person: p.person,
       detail: pnl ? `for ${p.paid} ${p.paidSymbol}, tx ${p.tx.slice(0, 6)}…${p.tx.slice(-4)}` : `tx ${p.tx.slice(0, 6)}…${p.tx.slice(-4)}`,
       flags,
     },
     p.link,
-  );
+  ));
 }
 
 /**
@@ -375,4 +384,66 @@ export function statsCard(p: { checked: number; blocked: number; trades: number;
     },
     p.link,
   );
+}
+
+/** One row of the portfolio table. Value in USD; change is profit on tokens bought through Qalibre, or null. */
+export interface PortfolioRow {
+  token: TokenMark;
+  amount: string;
+  valueUsd: number;
+  changePct: number | null;
+}
+
+const money = (v: number) => (v >= 1000 ? `$${Math.round(v).toLocaleString('en-US')}` : `$${v.toFixed(2)}`);
+
+/**
+ * The wallet at a glance: the total as the hero, then a quiet table, one row per holding, aligned in two
+ * columns (what you hold on the left, what it is worth on the right). Six rows at most; the rest fold into a
+ * single line. The card grows in height with the rows so nothing is ever squeezed.
+ */
+export function portfolioCard(p: { totalUsd: number; changeUsd: number | null; rows: PortfolioRow[]; more: number; person?: Person; link: string }): Promise<Buffer> {
+  const rows = p.rows.slice(0, 6);
+  const rowH = 92;
+  const tableTop = 330;
+  const moreH = p.more > 0 ? 56 : 0;
+  const h = Math.max(H, tableTop + rows.length * rowH + moreH + 150);
+  const R = W - L;
+  const bg = C.green;
+  const [whole, cents] = p.totalUsd.toFixed(2).split('.');
+  const wholeFmt = Number(whole).toLocaleString('en-US');
+  const change =
+    p.changeUsd === null || Math.abs(p.changeUsd) < 0.005
+      ? ''
+      : `<text x="${L}" y="252" font-family="Inter" font-weight="500" font-size="26" fill="${p.changeUsd >= 0 ? FLAG_DOT.pass : C.alarm}">${p.changeUsd >= 0 ? '+' : '\u2212'}${money(Math.abs(p.changeUsd))} on tokens bought with Qalibre</text>`;
+  const body = rows
+    .map((r, i) => {
+      const y = tableTop + i * rowH;
+      const cy = y + rowH / 2;
+      const sym = r.token.symbol.length > 14 ? r.token.symbol.slice(0, 13) + '…' : r.token.symbol;
+      const pct =
+        r.changePct === null
+          ? ''
+          : `<text x="${R}" y="${cy + 26}" text-anchor="end" font-family="Inter" font-weight="500" font-size="20" fill="${r.changePct >= 0 ? FLAG_DOT.pass : C.alarm}">${r.changePct >= 0 ? '+' : '\u2212'}${Math.abs(r.changePct).toFixed(1)}%</text>`;
+      return `${i > 0 ? `<rect x="${L}" y="${y}" width="${R - L}" height="1" fill="${C.paper}" fill-opacity="0.1"/>` : ''}
+  ${tokenBadge(r.token, L + 28, cy, 28)}
+  <text x="${L + 76}" y="${cy - 4}" font-family="Inter" font-weight="600" font-size="26" letter-spacing="-0.3" fill="${C.paper}">${x(sym)}</text>
+  <text x="${L + 76}" y="${cy + 26}" font-family="Inter" font-weight="400" font-size="20" fill="${C.paper}" fill-opacity="0.55">${x(r.amount)}</text>
+  <text x="${R}" y="${r.changePct === null ? cy + 9 : cy - 4}" text-anchor="end" font-family="Inter" font-weight="600" font-size="26" letter-spacing="-0.3" fill="${C.paper}">${money(r.valueUsd)}</text>
+  ${pct}`;
+    })
+    .join('\n  ');
+  const more = p.more > 0 ? `<text x="${L}" y="${tableTop + rows.length * rowH + 40}" font-family="Inter" font-weight="500" font-size="20" fill="${C.paper}" fill-opacity="0.55">and ${p.more} more ${p.more === 1 ? 'holding' : 'holdings'} in the app</text>` : '';
+  const doc = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${h}" viewBox="0 0 ${W} ${h}">
+  <rect width="${W}" height="${h}" fill="${bg}"/>
+  ${p.person ? wordmark(R - 92, 84, 30, C.paper, bg) : `<g transform="translate(${W - 150} 72) scale(1.6)"><circle cx="36" cy="22" r="22" fill="none" stroke="${C.brass}" stroke-width="12"/></g>`}
+  <text x="${L}" y="110" font-family="Inter" font-weight="500" font-size="26" fill="${C.paper}" fill-opacity="0.62">Portfolio</text>
+  <text x="${L - 5}" y="206" font-family="Inter" font-weight="600" font-size="104" letter-spacing="-4.5" fill="${C.paper}">$${wholeFmt}<tspan fill-opacity="0.5">.${cents}</tspan></text>
+  ${change}
+  <rect x="${L}" y="${tableTop - 22}" width="${R - L}" height="1" fill="${C.paper}" fill-opacity="0.18"/>
+  ${body}
+  ${more}
+  ${p.person ? personMark(p.person, L, h - 88, bg) : wordmark(L, h - 96, 30, C.paper, bg)}
+  <text x="${R}" y="${h - 70}" text-anchor="end" font-family="Inter" font-weight="500" font-size="20" fill="${C.paper}" fill-opacity="0.6">${x(p.link)}</text>
+</svg>`;
+  return renderOff(doc);
 }
