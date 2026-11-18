@@ -371,6 +371,12 @@ export function startBot(bot: Bot, db: Db, svc: Service, chat: Chat, social: Soc
         if (card && card.tg_id === q.from.id) return social.sharePosition(q.from.id, card.token as `0x${string}`);
         return;
       }
+      if (d.startsWith('wm:') && q.message?.chat.type === 'private') {
+        const card = db.getCard(d.slice(3));
+        if (!card || card.tg_id !== q.from.id) return void (await bot.answer(q.id, 'That alert has expired.'));
+        db.muteWatch(q.from.id, card.token);
+        return void (await bot.answer(q.id, 'Muted. No more alerts for this token.'));
+      }
       if (d.startsWith('m:') && q.message?.chat.type === 'private') return onMenu(q);
       if (d.startsWith('ag:') && q.message?.chat.type === 'private') return onAgent(q);
       if (d.startsWith('oa:') && q.message?.chat.type === 'private') return onOAuthDecision(q);

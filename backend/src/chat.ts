@@ -15,9 +15,12 @@ import { config, TOKENS } from './config.js';
 import type { Db } from './db.js';
 import { Bot, esc } from './telegram.js';
 import { HighImpact, NeedsApproval, UserError, trimUnits, type Service } from './service.js';
-import { cardFlags, safetyCard, safetyHeadline, tokenCard } from './cards.js';
+import { cardFlags, receiptCard, safetyCard, safetyHeadline, tokenCard } from './cards.js';
+import { improvement } from './value.js';
+import { salePnlPct, settledSecs } from './receipt.js';
+import type { OrderRow } from './db.js';
 import { tokenLogo } from './logos.js';
-import { checkToken, poolOf, resolveToken, type Safety, type TokenInfo } from './tokens.js';
+import { checkToken, poolOf, resolveToken, tokenInfo, type Safety, type TokenInfo } from './tokens.js';
 
 /** Buy sizes in QMS. A card shows the three largest that fit the wallet, the limit and the pool. */
 export const LADDER = ['0.01', '0.05', '0.1', '0.25', '0.5', '1', '2', '5', '10'] as const;
@@ -361,28 +364,71 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
   const startTicker = tickers.start;
   const stopTicker = tickers.stop;
 
-  /** Returns true when the update was shown by editing a chat status message. */
+  /** The receipt card for a settled trade: what you got, the price floor held, how long it took, and on sells the result. */
+  async function receiptPng(o: OrderRow): Promise<Buffer> {
+    const [buy, sell] = await Promise.all([tokenInfo(o.buy_token as Address), tokenInfo(o.sell_token as Address)]);
+    const sold = o.buy_token.toLowerCase() === WQMS && o.sell_token.toLowerCase() !== TOKENS.USDC.toLowerCase();
+    const bothCore = [o.buy_token, o.sell_token].every((a) => [WQMS, TOKENS.USDC.toLowerCase()].includes(a.toLowerCase()));
+    // Between QMS and USDC the subject is QMS; otherwise it is the token that is not QMS.
+    const subject = bothCore ? (o.buy_token.toLowerCase() === WQMS ? buy : sell) : sold ? sell : buy;
+    const direct = BigInt(o.direct_quote ?? '0');
+    const pct = direct > 0n ? Number((improvement(o) * 1_000_000n) / direct) / 10_000 : 0;
+    return receiptCard({
+      side: bothCore ? (o.buy_token.toLowerCase() === WQMS ? 'Bought' : 'Sold') : sold ? 'Sold' : 'Bought',
+      got: fmtToken(BigInt(o.buy_amount ?? '0'), buy.decimals),
+      gotSymbol: buy.symbol,
+      paid: fmtToken(BigInt(o.sell_amount), sell.decimals),
+      paidSymbol: sell.symbol,
+      token: { symbol: subject.symbol, address: subject.address, logo: await tokenLogo(subject.address) },
+      vsDirectPct: pct,
+      settledSecs: settledSecs(o),
+      pnlPct: sold && !bothCore ? salePnlPct(db.userOrders(o.tg_id, 1000), o, WQMS) : null,
+      tx: o.tx_hash ?? '',
+      link: `t.me/${username}`,
+    });
+  }
+
+  /** Returns true when the update was shown in the chat: as a receipt card for fills, or by editing the status message. */
   async function onOrderUpdate(tgId: number, html: string, orderId: string, kind: string): Promise<boolean> {
     await stopTicker(orderId);
     const o = db.getOrder(orderId);
-    if (!o?.status_msg_id) return false;
-    const kb: Keyboard = [];
-    const tokenAddr = (o.buy_token.toLowerCase() === WQMS ? o.sell_token : o.buy_token) as Address;
-    const isChatToken = tokenAddr.toLowerCase() !== WQMS && tokenAddr.toLowerCase() !== TOKENS.USDC.toLowerCase();
-    if (isChatToken && kind === 'filled') {
-      const card = newCard(tgId, tokenAddr);
-      const bought = o.sell_token.toLowerCase() === WQMS; // a buy: offer the exits
-      if (bought) kb.push(SELL_PCTS.map((p) => ({ text: p === 100 ? 'Sell all' : `Sell ${p}%`, callback_data: `c:${card}:s${p}` })));
-      kb.push([{ text: 'Share', callback_data: `f:${o.id}` }, { text: 'Token card', callback_data: `c:${card}:r` }]);
-    } else if (kind === 'filled') {
-      kb.push([{ text: 'Share', callback_data: `f:${o.id}` }]);
+    if (!o) return false;
+    if (kind === 'filled') {
+      const png = await receiptPng(o).catch((e) => (console.error('receipt card', (e as Error).message), null));
+      if (png) {
+        try {
+          const kb = fillKeyboard(tgId, o);
+          await bot.sendPhoto(tgId, png, html, kb.length ? { reply_markup: { inline_keyboard: kb } } : {});
+          // The receipt replaces the live timer, so the chat keeps one clean message per trade.
+          if (o.status_msg_id) await bot.call('deleteMessage', { chat_id: tgId, message_id: o.status_msg_id }).catch(() => {});
+          return true;
+        } catch (e) {
+          console.error('receipt send', (e as Error).message); // fall back to text below
+        }
+      }
     }
+    if (!o.status_msg_id) return false;
     try {
-      await bot.editMessage(tgId, o.status_msg_id, html, kb.length ? { reply_markup: { inline_keyboard: kb } } : {});
+      await bot.editMessage(tgId, o.status_msg_id, html, kind === 'filled' ? { reply_markup: { inline_keyboard: fillKeyboard(tgId, o) } } : {});
       return true;
     } catch {
       return false; // fall back to a new message
     }
+  }
+
+  function fillKeyboard(tgId: number, o: OrderRow): Keyboard {
+    const kb: Keyboard = [];
+    const tokenAddr = (o.buy_token.toLowerCase() === WQMS ? o.sell_token : o.buy_token) as Address;
+    const isChatToken = tokenAddr.toLowerCase() !== WQMS && tokenAddr.toLowerCase() !== TOKENS.USDC.toLowerCase();
+    if (isChatToken) {
+      const card = newCard(tgId, tokenAddr);
+      const bought = o.sell_token.toLowerCase() === WQMS; // a buy: offer the exits
+      if (bought) kb.push(SELL_PCTS.map((p) => ({ text: p === 100 ? 'Sell all' : `Sell ${p}%`, callback_data: `c:${card}:s${p}` })));
+      kb.push([{ text: 'Share', callback_data: `f:${o.id}` }, { text: 'Token card', callback_data: `c:${card}:r` }]);
+    } else {
+      kb.push([{ text: 'Share', callback_data: `f:${o.id}` }]);
+    }
+    return kb;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -645,7 +691,30 @@ export function createChat({ bot, db, svc, username }: ChatDeps) {
     }
   }
 
-  return { afterApproval, onPrivateText, onStartPayload, onInlineQuery, onCallback, onOrderUpdate, renderCard, publicCard };
+  /** A token you hold turned risky. One message, the facts in plain words, and the way out one tap away. */
+  async function watchAlert(tgId: number, token: Address, kind: 'liquidity' | 'minted' | 'blocked', detail: string) {
+    const t = await tokenInfo(token);
+    const sym = esc(t.symbol);
+    const head = kind === 'liquidity' ? `${sym}'s pool is shrinking fast` : kind === 'minted' ? `More ${sym} was just created` : `Selling ${sym} may be blocked`;
+    const close =
+      kind === 'blocked'
+        ? 'You can still try Sell all below. If it fails, nothing leaves your wallet.'
+        : 'If you want out, Sell all below gets the same price protection as every trade.';
+    const card = newCard(tgId, token);
+    await bot.sendMessage(tgId, `<b>Heads up: ${head}</b>
+${esc(detail)}
+
+${close}`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Sell all', callback_data: `c:${card}:s100` }, { text: 'Token card', callback_data: `c:${card}:r` }],
+          [{ text: `Mute alerts for ${t.symbol}`, callback_data: `wm:${card}` }],
+        ],
+      },
+    });
+  }
+
+  return { afterApproval, onPrivateText, onStartPayload, onInlineQuery, onCallback, onOrderUpdate, renderCard, publicCard, watchAlert };
 }
 
 export type Chat = ReturnType<typeof createChat>;

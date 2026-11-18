@@ -59,7 +59,7 @@ interface Card {
   /** One sentence under the statement. */
   line: string;
   /** Colour of that sentence: paper by default; brass or alarm when it carries a safety verdict. */
-  lineTone?: 'paper' | 'brass' | 'alarm';
+  lineTone?: 'paper' | 'brass' | 'alarm' | 'gain';
   /** Optional quiet detail under the sentence (amounts, an address). */
   detail?: string;
   /** The token the card is about: shown as a header with its logo (or designed badge), symbol and context. */
@@ -176,7 +176,7 @@ function svg(c: Card, link: string): string {
   <text x="${L + 84}" y="${top + 58}" font-family="Inter" font-weight="500" font-size="20" fill="${C.paper}" fill-opacity="0.6">${x(c.over)}</text>`
     : `<text x="${L}" y="${overY}" font-family="Inter" font-weight="500" font-size="26" fill="${C.paper}" fill-opacity="0.62">${x(c.over)}</text>`}
   <text x="${L - Math.round(heroSize * 0.05)}" y="${heroY}" font-family="Inter" font-weight="600" font-size="${heroSize}" letter-spacing="${(-heroSize * 0.045).toFixed(1)}" fill="${c.heroTone === 'alarm' ? C.alarm : c.heroTone === 'brass' ? C.brass : C.paper}">${typeset(c.hero, heroSize)}${unit}</text>
-  <text x="${L}" y="${lineY}" font-family="Inter" font-weight="500" font-size="32" letter-spacing="-0.3" fill="${c.lineTone === 'alarm' ? C.alarm : c.lineTone === 'brass' ? C.brass : C.paper}" fill-opacity="${c.lineTone && c.lineTone !== 'paper' ? 1 : 0.92}">${x(c.line)}</text>
+  <text x="${L}" y="${lineY}" font-family="Inter" font-weight="500" font-size="32" letter-spacing="-0.3" fill="${c.lineTone === 'alarm' ? C.alarm : c.lineTone === 'brass' ? C.brass : c.lineTone === 'gain' ? FLAG_DOT.pass : C.paper}" fill-opacity="${c.lineTone && c.lineTone !== 'paper' ? 1 : 0.92}">${x(c.line)}</text>
   ${c.detail ? `<text x="${L}" y="${lineY + 46}" font-family="Inter" font-weight="400" font-size="22" fill="${C.paper}" fill-opacity="0.5">${typeset(c.detail, 22)}</text>` : ''}
   ${c.flags?.length ? flagRow(c.flags, L, lineY + (c.detail ? 46 : 0) + 30) : ''}
   ${c.person ? personMark(c.person, L, H - 88, bg) : wordmark(L, H - 96, 30, C.paper, bg)}
@@ -192,6 +192,46 @@ function render(c: Card, link: string): Buffer {
 // ---------------------------------------------------------------------------------------------
 // The cards
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * The receipt for every completed trade, sent in the chat the moment it settles. What you got is the hero; the
+ * proof sits beneath it as pills: the price floor held, and how long it took. Sells also show the profit or loss
+ * on the tokens sold, in green or the warm alarm tone, on the green or ink field.
+ */
+export function receiptCard(p: {
+  side: 'Bought' | 'Sold';
+  got: string;
+  gotSymbol: string;
+  paid: string;
+  paidSymbol: string;
+  token: TokenMark;
+  vsDirectPct: number;
+  settledSecs: number | null;
+  pnlPct: number | null;
+  tx: string;
+  link: string;
+}): Buffer {
+  const loss = p.pnlPct !== null && p.pnlPct < 0;
+  const flags: Flag[] = [
+    { level: 'pass', text: p.vsDirectPct > 0.0005 ? `Beat direct swap by ${p.vsDirectPct.toFixed(2)}%` : 'At the direct swap price' },
+  ];
+  if (p.settledSecs !== null && p.settledSecs > 0) flags.push({ level: 'pass', text: `Settled in ${p.settledSecs}s` });
+  const pnl = p.pnlPct === null ? null : `${p.pnlPct >= 0 ? '+' : '−'}${Math.abs(p.pnlPct).toFixed(1)}% on this position`;
+  return render(
+    {
+      field: loss ? 'ink' : 'green',
+      token: p.token,
+      over: `${p.side} on QMS`,
+      hero: `+${p.got}`,
+      unit: p.gotSymbol,
+      line: pnl ?? `for ${p.paid} ${p.paidSymbol}`,
+      lineTone: pnl ? (loss ? 'alarm' : 'gain') : 'paper',
+      detail: pnl ? `for ${p.paid} ${p.paidSymbol}, tx ${p.tx.slice(0, 6)}…${p.tx.slice(-4)}` : `tx ${p.tx.slice(0, 6)}…${p.tx.slice(-4)}`,
+      flags,
+    },
+    p.link,
+  );
+}
 
 /**
  * A trade. When Qalibre beat the direct swap, the improvement is the story; otherwise the amount received is,

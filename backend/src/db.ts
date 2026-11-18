@@ -135,6 +135,11 @@ export function openDb(path: string) {
     );
     CREATE INDEX IF NOT EXISTS orders_status ON orders(status);
     CREATE INDEX IF NOT EXISTS orders_user ON orders(tg_id, created_at);
+    CREATE TABLE IF NOT EXISTS watch_mutes (
+      tg_id INTEGER NOT NULL,
+      token TEXT NOT NULL,
+      PRIMARY KEY (tg_id, token)
+    );
     CREATE TABLE IF NOT EXISTS cards (
       id TEXT PRIMARY KEY,
       tg_id INTEGER NOT NULL,
@@ -283,6 +288,17 @@ export function openDb(path: string) {
     },
     getOrder(id: string): OrderRow | undefined {
       return db.prepare('SELECT * FROM orders WHERE id = ?').get(id) as OrderRow | undefined;
+    },
+    /** Tokens bought through Qalibre (with QMS) since a time: the set the watcher keeps an eye on. */
+    watchedTokens(sinceSec: number, wqms: string, limit = 25): string[] {
+      return (db.prepare('SELECT buy_token AS t, MAX(created_at) AS last FROM orders WHERE status = ? AND lower(sell_token) = ? AND created_at > ? GROUP BY lower(buy_token) ORDER BY last DESC LIMIT ?').all('filled', wqms.toLowerCase(), sinceSec, limit) as { t: string }[]).map((r) => r.t);
+    },
+    /** People who bought a token through Qalibre and have not muted alerts for it, with their wallet. */
+    tokenBuyers(token: string, wqms: string): { tg_id: number; account: string }[] {
+      return db.prepare('SELECT DISTINCT o.tg_id AS tg_id, u.account AS account FROM orders o JOIN users u ON u.tg_id = o.tg_id WHERE o.status = ? AND lower(o.sell_token) = ? AND lower(o.buy_token) = ? AND u.account IS NOT NULL AND NOT EXISTS (SELECT 1 FROM watch_mutes m WHERE m.tg_id = o.tg_id AND m.token = lower(o.buy_token))').all('filled', wqms.toLowerCase(), token.toLowerCase()) as unknown as { tg_id: number; account: string }[];
+    },
+    muteWatch(tgId: number, token: string) {
+      db.prepare('INSERT OR IGNORE INTO watch_mutes (tg_id, token) VALUES (?, ?)').run(tgId, token.toLowerCase());
     },
     userOrders(tgId: number, limit = 30): OrderRow[] {
       return db.prepare('SELECT * FROM orders WHERE tg_id = ? ORDER BY created_at DESC, id DESC LIMIT ?').all(tgId, limit) as unknown as OrderRow[];

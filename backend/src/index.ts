@@ -1,4 +1,4 @@
-import { config } from './config.js';
+import { config, TOKENS } from './config.js';
 import { openDb } from './db.js';
 import { Bot } from './telegram.js';
 import { createService } from './service.js';
@@ -7,6 +7,10 @@ import { setupBot, startBot } from './bot.js';
 import { createOwnerOps } from './ownerops.js';
 import { createChat, type Chat } from './chat.js';
 import { createSocial } from './social.js';
+import { createWatcher } from './watch.js';
+import { checkToken, poolOf, tokenInfo } from './tokens.js';
+import { publicClient } from '../../solver/src/chain.js';
+import { erc20Abi, type Address } from 'viem';
 import { onTokenChecked } from './tokens.js';
 import { createAgentHandler } from './agent.js';
 import { createOAuth } from './oauth.js';
@@ -44,6 +48,28 @@ You'll get a message when it settles, at no worse than a direct swap. Not you? R
 startApi(db, svc, createOwnerOps(db, { onApproved: (tgId, tokens) => chat?.afterApproval(tgId, tokens) }), { invite: (id) => social.inviteSummary(id), botUsername: me.username, agent, oauth: oauth.handle });
 
 setInterval(() => void svc.runBatch(), config.tickMs);
+
+// We keep watching after you buy: tokens bought through Qalibre in the last 30 days, read cheaply every five
+// minutes, with holders alerted (and offered Sell all) if the pool is drained, supply jumps or selling is blocked.
+const chain = publicClient();
+const core = new Set([TOKENS.WQMS.toLowerCase(), TOKENS.USDC.toLowerCase()]);
+createWatcher({
+  tokens: () => db.watchedTokens(Math.floor(Date.now() / 1000) - 30 * 86_400, TOKENS.WQMS).filter((t) => !core.has(t.toLowerCase())),
+  read: async (t) => {
+    const info = await tokenInfo(t as Address);
+    const [pool, supply] = await Promise.all([poolOf(info), chain.readContract({ address: info.address, abi: erc20Abi, functionName: 'totalSupply' })]);
+    return { qmsReserve: pool.qmsReserve, supply };
+  },
+  sellBlocked: async (t) => {
+    const s = await checkToken(t as Address, { fresh: true });
+    return { blocked: s.verdict === 'blocked', reason: s.reason };
+  },
+  holders: async (t) =>
+    Promise.all(
+      db.tokenBuyers(t, TOKENS.WQMS).map(async (h) => ({ tgId: h.tg_id, balance: await chain.readContract({ address: t as Address, abi: erc20Abi, functionName: 'balanceOf', args: [h.account as Address] }) })),
+    ),
+  alert: async (tgId, token, kind, detail) => chat?.watchAlert(tgId, token, kind, detail),
+}).start();
 
 // Free hosts put a service to sleep after ~15 minutes without inbound requests. Render tells us our public
 // address, so we visit ourselves through the internet every 10 minutes; the bot and batch engine stay awake.
